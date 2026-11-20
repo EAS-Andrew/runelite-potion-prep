@@ -58,17 +58,11 @@ class PotionPrepPanel extends PluginPanel
 		content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
 		content.setBackground(ColorScheme.DARK_GRAY_COLOR);
 
-		JLabel title = new JLabel("Potion Prep");
-		title.setFont(FontManager.getRunescapeBoldFont());
-		title.setForeground(Color.WHITE);
-		content.add(left(title));
-		content.add(Box.createVerticalStrut(8));
-
 		search.setIcon(IconTextField.Icon.SEARCH);
 		search.setPreferredSize(new Dimension(PANEL_WIDTH - 20, 30));
 		search.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		search.setHoverBackgroundColor(ColorScheme.DARK_GRAY_HOVER_COLOR);
-		search.setToolTipText("Filter potions; press Enter to pick the first match");
+		search.setToolTipText("Search potions");
 		search.getDocument().addDocumentListener(new DocumentListener()
 		{
 			@Override
@@ -104,9 +98,23 @@ class PotionPrepPanel extends PluginPanel
 		content.add(stretch(grid));
 		content.add(Box.createVerticalStrut(10));
 
+		JPanel summary = new JPanel();
+		summary.setLayout(new BoxLayout(summary, BoxLayout.Y_AXIS));
+		summary.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		summary.setBorder(new EmptyBorder(6, 8, 6, 8));
+		JPanel top = new JPanel(new BorderLayout(6, 0));
+		top.setOpaque(false);
 		selectedLabel.setFont(FontManager.getRunescapeBoldFont());
 		selectedLabel.setForeground(Color.WHITE);
-		content.add(left(selectedLabel));
+		makeableLabel.setFont(FontManager.getRunescapeBoldFont());
+		top.add(selectedLabel, BorderLayout.CENTER);
+		top.add(makeableLabel, BorderLayout.EAST);
+		top.setAlignmentX(LEFT_ALIGNMENT);
+		summary.add(top);
+		makeableSub.setFont(FontManager.getRunescapeSmallFont());
+		makeableSub.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		summary.add(left(makeableSub));
+		content.add(stretch(summary));
 		content.add(Box.createVerticalStrut(6));
 
 		JPanel buttons = new JPanel(new GridLayout(1, 2, 6, 0));
@@ -121,18 +129,6 @@ class PotionPrepPanel extends PluginPanel
 		buttons.add(show);
 		buttons.add(clear);
 		content.add(stretch(buttons));
-		content.add(Box.createVerticalStrut(12));
-
-		JPanel summary = new JPanel();
-		summary.setLayout(new BoxLayout(summary, BoxLayout.Y_AXIS));
-		summary.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		summary.setBorder(new EmptyBorder(8, 8, 8, 8));
-		makeableLabel.setFont(FontManager.getRunescapeBoldFont());
-		makeableSub.setFont(FontManager.getRunescapeSmallFont());
-		makeableSub.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		summary.add(left(makeableLabel));
-		summary.add(left(makeableSub));
-		content.add(stretch(summary));
 		content.add(Box.createVerticalStrut(10));
 
 		content.add(left(heading("Ingredients")));
@@ -158,14 +154,18 @@ class PotionPrepPanel extends PluginPanel
 	{
 		grid.setSelected(plan.getPotion());
 		grid.setStats(makeable, herbloreLevel);
-		selectedLabel.setText(plan.getPotion().getName() + "  (level " + plan.getPotion().getLevel() + ")");
-
-		int n = plan.getMakeable();
-		makeableLabel.setText("Can make " + QuantityFormatter.formatNumber(n) + " " + plan.getUnit());
+		Potion potion = plan.getPotion();
+		int n = potion.toPotions(plan.getMakeable());
+		int now = potion.toPotions(plan.getMakeableNow());
+		selectedLabel.setText(potion.potionName());
+		selectedLabel.setToolTipText("Level " + potion.getLevel());
+		makeableLabel.setText(QuantityFormatter.formatNumber(n));
 		makeableLabel.setForeground(n > 0 ? GOOD : BAD);
-		makeableSub.setText(n == 0 ? "Missing ingredients"
-			: plan.getMakeableNow() == n ? "Everything is prepped"
-			: plan.getMakeableNow() + " right now, " + (n - plan.getMakeableNow()) + " after prep");
+		makeableLabel.setToolTipText("Potions you can make");
+		makeableSub.setText(n == 0 ? "None makeable"
+			: now == n ? "All ready"
+			: QuantityFormatter.formatNumber(now) + " ready &middot; +" + QuantityFormatter.formatNumber(n - now) + " after prep");
+		makeableSub.setText(wrap(makeableSub.getText()));
 
 		rowsPanel.removeAll();
 		for (PotionPlan.Row row : plan.getRows())
@@ -181,6 +181,7 @@ class PotionPrepPanel extends PluginPanel
 			l.setFont(FontManager.getRunescapeSmallFont());
 			l.setForeground(color(step.getSeverity()));
 			l.setBorder(new EmptyBorder(2, 0, 2, 0));
+			l.setToolTipText(step.getHint());
 			stepsPanel.add(left(l));
 		}
 
@@ -251,7 +252,7 @@ class PotionPrepPanel extends PluginPanel
 
 	private static String wrap(String text)
 	{
-		return "<html><body style='width:190px'>" + text + "</body></html>";
+		return "<html><body style='width:165px'>" + text + "</body></html>";
 	}
 
 	private static JPanel left(java.awt.Component c)

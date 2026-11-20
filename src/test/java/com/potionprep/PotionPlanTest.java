@@ -30,32 +30,32 @@ public class PotionPlanTest
 	}
 
 	@Test
-	public void standardPotionHasHerbRowThenSecondaryRow()
+	public void oneRowPerTaskWithInputsButNotOutput()
+	{
+		List<int[]> rows = PotionPlan.layoutRows(Potion.SUPERANTIPOISON);
+		assertEquals(4, rows.size());
+		assertArrayEquals(new int[]{ItemID.UNIDENTIFIED_IRIT}, rows.get(0));
+		assertArrayEquals(new int[]{ItemID.IRIT_LEAF, ItemID.VIAL_WATER}, rows.get(1));
+		assertArrayEquals(new int[]{ItemID.UNICORN_HORN, ItemID.PESTLE_AND_MORTAR}, rows.get(2));
+		assertArrayEquals(new int[]{ItemID.IRITVIAL, ItemID.UNICORN_HORN_DUST}, rows.get(3));
+	}
+
+	@Test
+	public void plainSecondaryHasNoTaskRowOfItsOwn()
 	{
 		List<int[]> rows = PotionPlan.layoutRows(Potion.PRAYER);
-		assertEquals(2, rows.size());
-		assertArrayEquals(new int[]{ItemID.UNIDENTIFIED_RANARR, ItemID.RANARR_WEED, ItemID.VIAL_WATER, ItemID.RANARRVIAL}, rows.get(0));
-		assertArrayEquals(new int[]{ItemID.SNAPE_GRASS}, rows.get(1));
+		assertEquals(3, rows.size());
+		assertArrayEquals(new int[]{ItemID.RANARRVIAL, ItemID.SNAPE_GRASS}, rows.get(2));
 	}
 
 	@Test
-	public void crushRowIsRawThenToolWithoutTheCrushedResult()
-	{
-		List<int[]> rows = PotionPlan.layoutRows(Potion.SARADOMIN_BREW);
-		assertEquals(2, rows.size());
-		assertArrayEquals(new int[]{ItemID.UNIDENTIFIED_TOADFLAX, ItemID.TOADFLAX, ItemID.VIAL_WATER, ItemID.TOADFLAXVIAL}, rows.get(0));
-		assertArrayEquals(new int[]{ItemID.BIRD_NEST_EMPTY, ItemID.PESTLE_AND_MORTAR}, rows.get(1));
-	}
-
-	@Test
-	public void staminaRowsChainThroughSuperEnergy()
+	public void staminaTasksChainThroughSuperEnergy()
 	{
 		List<int[]> rows = PotionPlan.layoutRows(Potion.STAMINA);
 		assertEquals(4, rows.size());
-		assertArrayEquals(new int[]{ItemID.UNIDENTIFIED_AVANTOE, ItemID.AVANTOE, ItemID.VIAL_WATER, ItemID.AVANTOEVIAL}, rows.get(0));
-		assertArrayEquals(new int[]{ItemID.MORTMYREMUSHROOM}, rows.get(1));
-		assertArrayEquals(new int[]{ItemID._1DOSE2ENERGY, ItemID._2DOSE2ENERGY, ItemID._3DOSE2ENERGY, ItemID._4DOSE2ENERGY}, rows.get(2));
-		assertArrayEquals(new int[]{ItemID.AMYLASE}, rows.get(3));
+		assertArrayEquals(new int[]{ItemID.AVANTOEVIAL, ItemID.MORTMYREMUSHROOM}, rows.get(2));
+		assertArrayEquals(new int[]{ItemID._1DOSE2ENERGY, ItemID._2DOSE2ENERGY, ItemID._3DOSE2ENERGY, ItemID._4DOSE2ENERGY,
+			ItemID.AMYLASE}, rows.get(3));
 		assertFalse(PotionPlan.layoutItems(Potion.STAMINA).contains(ItemID._4DOSESTAMINA));
 	}
 
@@ -95,7 +95,7 @@ public class PotionPlanTest
 		assertEquals(0, plan.getMakeableNow());
 		String s = steps(plan);
 		assertTrue(s, s.contains("Clean 10 grimy ranarr weed"));
-		assertTrue(s, s.contains("Make 14 ranarr weed potions (unf)"));
+		assertTrue(s, s.contains("Make 14 ranarr (unf)"));
 		assertTrue(s, s.contains("Short 86 ranarr weed"));
 	}
 
@@ -118,7 +118,7 @@ public class PotionPlanTest
 		String s = steps(plan);
 		assertFalse(s, s.contains("Crush"));
 		assertTrue(s, s.contains("Clean 533 grimy avantoe"));
-		assertTrue(s, s.contains("Make 643 avantoe potions (unf)"));
+		assertTrue(s, s.contains("Make 643 avantoe (unf)"));
 		assertTrue(s, s.contains("Short 1615 mort myre fungus"));
 	}
 
@@ -135,7 +135,7 @@ public class PotionPlanTest
 		Map<Integer, Integer> c = counts(ItemID.LANTADYMEVIAL, 10, ItemID.BLUE_DRAGON_SCALE, 10);
 		PotionPlan noPestle = PotionPlan.compute(Potion.ANTIFIRE, c, 99);
 		assertEquals(0, noPestle.getMakeable());
-		assertTrue(steps(noPestle), steps(noPestle).contains("but no pestle and mortar"));
+		assertTrue(steps(noPestle), steps(noPestle).contains("No pestle and mortar"));
 
 		c.put(ItemID.PESTLE_AND_MORTAR, 1);
 		PotionPlan withPestle = PotionPlan.compute(Potion.ANTIFIRE, c, 99);
@@ -149,12 +149,14 @@ public class PotionPlanTest
 		// 2 super energy(4) = 8 doses on hand, plus 2 unf + 2 fungus = 6 more doses.
 		PotionPlan plan = PotionPlan.compute(Potion.STAMINA, counts(ItemID._4DOSE2ENERGY, 2, ItemID.AVANTOEVIAL, 2,
 			ItemID.MORTMYREMUSHROOM, 2, ItemID.AMYLASE, 100), 99);
-		assertEquals("doses", plan.getUnit());
+		assertEquals(3, Potion.STAMINA.toPotions(plan.getMakeable()));
+		assertEquals("Stamina potion(4)", Potion.STAMINA.potionName());
+		assertEquals("Prayer potion(3)", Potion.PRAYER.potionName());
 		assertEquals(14, plan.getMakeable());
 		assertEquals(8, plan.getMakeableNow());
 		String s = steps(plan);
 		assertTrue(s, s.contains("Mix 2 super energies"));
-		assertTrue(s, s.contains("Add amylase to 14 doses of super energy"));
+		assertTrue(s, s.contains("Add amylase to 14 doses"));
 	}
 
 	@Test
@@ -163,7 +165,7 @@ public class PotionPlanTest
 		PotionPlan plan = PotionPlan.compute(Potion.SUPER_COMBAT, counts(ItemID._4DOSE2ATTACK, 5, ItemID._4DOSE2STRENGTH, 5,
 			ItemID._4DOSE2DEFENSE, 3, ItemID.TORSTOL, 10), 99);
 		assertEquals(3, plan.getMakeable());
-		assertTrue(steps(plan), steps(plan).contains("For super defence: short 10 cadantine, 10 vial of water, 10 white berries"));
+		assertTrue(steps(plan), steps(plan).contains("Super defence: short 10 cadantine, 10 vial of water, 10 white berries"));
 	}
 
 	@Test
@@ -171,6 +173,6 @@ public class PotionPlanTest
 	{
 		PotionPlan plan = PotionPlan.compute(Potion.ZAMORAK_BREW, counts(ItemID.UNIDENTIFIED_TORSTOL, 5, ItemID.VIAL_WATER, 5, ItemID.JANGERBERRIES, 5), 60);
 		assertEquals(0, plan.getMakeable());
-		assertTrue(steps(plan), steps(plan).contains("Zamorak brew needs 78 Herblore"));
+		assertTrue(steps(plan), steps(plan).contains("Needs 78 Herblore"));
 	}
 }

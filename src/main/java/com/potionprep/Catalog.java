@@ -24,7 +24,7 @@ final class Catalog
 
 	static final Node PESTLE = Node.item("Pestle and mortar", ItemID.PESTLE_AND_MORTAR, "General stores");
 	static final Node VIAL = Node.item("Vial of water", ItemID.VIAL_WATER, "Fill vials at a sink or fountain, or the GE");
-	static final Node COCONUT_MILK = Node.item("Vial of coconut milk", ItemID.VIAL_COCONUT_MILK, "Smash a coconut and fill a vial, or the GE");
+	static final Node COCONUT_MILK = Node.item("Coconut milk", ItemID.VIAL_COCONUT_MILK, "Smash a coconut and fill a vial, or the GE");
 
 	// --- Herbs: grimy -> clean -> unf ---
 
@@ -38,8 +38,10 @@ final class Catalog
 		{
 			grimy = Node.item("Grimy " + lower(name), grimyId, "Farming, drops, or the GE");
 			clean = Node.item(name, cleanId, "Farming, drops, or the GE").madeBy(Recipe.clean(grimy, cleanLevel));
-			unf = Node.item(name + " potion (unf)", unfId, null)
-				.madeBy(Recipe.mix(unfLevel, 1, "Make %d " + lower(name) + " potions (unf)", in(clean, 1), in(VIAL, 1)));
+			// In game the unf drops "leaf"/"weed": Guam potion (unf), Ranarr potion (unf).
+			String shortName = name.replace(" leaf", "").replace("Ranarr weed", "Ranarr");
+			unf = Node.item(shortName + " potion (unf)", unfId, null)
+				.madeBy(Recipe.mix(unfLevel, 1, "Make %d " + lower(shortName) + " (unf)", in(clean, 1), in(VIAL, 1)));
 		}
 	}
 
@@ -127,22 +129,22 @@ final class Catalog
 
 	/** One amylase crystal per dose of super energy. */
 	static final Node STAMINA = Node.dosed("Stamina potion", ItemID._1DOSESTAMINA, ItemID._2DOSESTAMINA, ItemID._3DOSESTAMINA, ItemID._4DOSESTAMINA)
-		.madeBy(Recipe.mix(77, 1, "Add amylase to %d doses of super energy", in(SUPER_ENERGY, 1), in(AMYLASE, 1)));
+		.madeBy(Recipe.mix(77, 1, "Add amylase to %d doses", in(SUPER_ENERGY, 1), in(AMYLASE, 1)));
 
 	/** One lava scale shard per dose of antifire. */
 	static final Node EXTENDED_ANTIFIRE = Node.dosed("Extended antifire", ItemID._1DOSE2ANTIDRAGON, ItemID._2DOSE2ANTIDRAGON, ItemID._3DOSE2ANTIDRAGON, ItemID._4DOSE2ANTIDRAGON)
-		.madeBy(Recipe.mix(84, 1, "Add shards to %d doses of antifire", in(ANTIFIRE, 1), in(LAVA_SHARD, 1)));
+		.madeBy(Recipe.mix(84, 1, "Add shards to %d doses", in(ANTIFIRE, 1), in(LAVA_SHARD, 1)));
 
 	/** Crushed superior dragon bones + antifire(4) = super antifire(4). */
 	static final Node SUPER_ANTIFIRE = Node.dosed("Super antifire", ItemID._1DOSE3ANTIDRAGON, ItemID._2DOSE3ANTIDRAGON, ItemID._3DOSE3ANTIDRAGON, ItemID._4DOSE3ANTIDRAGON)
-		.madeBy(Recipe.mix(92, 4, "Mix %d super antifires (decant antifire to (4) first)", in(ANTIFIRE, 4), in(CRUSHED_SUPERIOR_BONES, 1)));
+		.madeBy(Recipe.mix(92, 4, "Mix %d super antifires", in(ANTIFIRE, 4), in(CRUSHED_SUPERIOR_BONES, 1)));
 
 	static final Node EXTENDED_SUPER_ANTIFIRE = Node.dosed("Extended super antifire", ItemID._1DOSE4ANTIDRAGON, ItemID._2DOSE4ANTIDRAGON, ItemID._3DOSE4ANTIDRAGON, ItemID._4DOSE4ANTIDRAGON)
-		.madeBy(Recipe.mix(98, 1, "Add shards to %d doses of super antifire", in(SUPER_ANTIFIRE, 1), in(LAVA_SHARD, 1)));
+		.madeBy(Recipe.mix(98, 1, "Add shards to %d doses", in(SUPER_ANTIFIRE, 1), in(LAVA_SHARD, 1)));
 
 	/** Torstol + super attack(4) + super strength(4) + super defence(4). */
 	static final Node SUPER_COMBAT = Node.dosed("Super combat", ItemID._1DOSE2COMBAT, ItemID._2DOSE2COMBAT, ItemID._3DOSE2COMBAT, ItemID._4DOSE2COMBAT)
-		.madeBy(Recipe.mix(90, 4, "Mix %d super combats (decant supers to (4) first)",
+		.madeBy(Recipe.mix(90, 4, "Mix %d super combats",
 			in(SUPER_ATTACK, 4), in(SUPER_STRENGTH, 4), in(SUPER_DEFENCE, 4), in(TORSTOL.clean, 1)));
 
 	static final Node ANTIDOTE_PP_UNF = Node.item("Antidote++ (unf)", ItemID.UNFINISHED_ANTIDOTE__, null)
@@ -153,8 +155,8 @@ final class Catalog
 
 	/** Five Zulrah's scales per dose of antidote++. */
 	static final Node ANTI_VENOM = Node.dosed("Anti-venom", ItemID.ANTIVENOM1, ItemID.ANTIVENOM2, ItemID.ANTIVENOM3, ItemID.ANTIVENOM4)
-		.madeBy(Recipe.mix(87, 1, "Add scales to %d doses of antidote++", in(ANTIDOTE_PP, 1), in(ZULRAH_SCALES, 5)));
+		.madeBy(Recipe.mix(87, 1, "Add scales to %d doses", in(ANTIDOTE_PP, 1), in(ZULRAH_SCALES, 5)));
 
 	static final Node ANTI_VENOM_PLUS = Node.dosed("Anti-venom+", ItemID.ANTIVENOM_1, ItemID.ANTIVENOM_2, ItemID.ANTIVENOM_3, ItemID.ANTIVENOM_4)
-		.madeBy(Recipe.mix(94, 4, "Mix %d anti-venom+ (decant anti-venom to (4) first)", in(ANTI_VENOM, 4), in(TORSTOL.clean, 1)));
+		.madeBy(Recipe.mix(94, 4, "Mix %d anti-venom+", in(ANTI_VENOM, 4), in(TORSTOL.clean, 1)));
 }

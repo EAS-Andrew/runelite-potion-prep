@@ -89,7 +89,7 @@ class PotionGrid extends JPanel
 			}
 			else
 			{
-				int n = makeable.getOrDefault(t.potion, 0);
+				int n = t.potion.toPotions(makeable.getOrDefault(t.potion, 0));
 				t.count.setText(QuantityFormatter.quantityToStackSize(n));
 				t.count.setForeground(n > 0 ? GOOD : ColorScheme.MEDIUM_GRAY_COLOR);
 				t.makeable = n;
@@ -165,7 +165,7 @@ class PotionGrid extends JPanel
 		void updateTooltip()
 		{
 			String line = makeable < 0 ? "Needs " + potion.getLevel() + " Herblore"
-				: "Level " + potion.getLevel() + " &middot; can make " + makeable;
+				: "Level " + potion.getLevel() + " &middot; can make " + makeable + " &times; " + potion.potionName();
 			setToolTipText("<html>" + potion.getName() + "<br>" + line + "</html>");
 		}
 

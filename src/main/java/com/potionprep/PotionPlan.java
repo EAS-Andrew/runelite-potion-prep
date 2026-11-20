@@ -39,6 +39,8 @@ public final class PotionPlan
 	{
 		Severity severity;
 		String text;
+		/** Extra detail for the tooltip, or null. */
+		String hint;
 	}
 
 	private static final int MAX_UNITS = 1_000_000;
@@ -50,17 +52,14 @@ public final class PotionPlan
 	private final int makeable;
 	/** Final crafts possible with no prep at all. */
 	private final int makeableNow;
-	/** What one final craft is called: "potions", "doses", "potions (4)". */
-	private final String unit;
 
-	private PotionPlan(Potion potion, List<Row> rows, List<Step> steps, int makeable, int makeableNow, String unit)
+	private PotionPlan(Potion potion, List<Row> rows, List<Step> steps, int makeable, int makeableNow)
 	{
 		this.potion = potion;
 		this.rows = Collections.unmodifiableList(rows);
 		this.steps = Collections.unmodifiableList(steps);
 		this.makeable = makeable;
 		this.makeableNow = makeableNow;
-		this.unit = unit;
 	}
 
 	/**
@@ -114,80 +113,56 @@ public final class PotionPlan
 	static final int BANK_COLUMNS = 8;
 
 	/**
-	 * The bank layout: one row per ingredient chain, in process order. The
-	 * herb chain reads grimy, clean, vial, unf; a crushed secondary's row is
-	 * the raw item then the pestle (the crushed result is not shown). A potion
-	 * used as an ingredient brings its own chains' rows first, then a row of
-	 * its doses (1)-(4). The finished potion is not shown. Rows wider than the
-	 * bank wrap.
+	 * The bank layout: one row per task, in the order you do them. Each row
+	 * holds everything that task needs (inputs, then any tool) but not what
+	 * it makes; an output only reappears as an input on a later row. Potions
+	 * fill their slots with doses (1)-(4). Rows wider than the bank wrap.
+	 *
+	 * Superantipoison: [grimy irit] / [irit, vial] / [unicorn horn, pestle]
+	 * / [irit (unf), unicorn horn dust].
 	 */
 	public static List<int[]> layoutRows(Potion potion)
 	{
+		Set<Node> seen = Collections.newSetFromMap(new IdentityHashMap<>());
 		List<int[]> rows = new ArrayList<>();
-		stage(potion.getProduct().getRecipe(), rows);
+		Recipe fin = potion.getProduct().getRecipe();
+		for (Recipe.Input in : fin.getInputs())
+		{
+			addTasks(in.getNode(), seen, rows);
+		}
+		addRow(rows, taskIds(fin));
 		return rows;
 	}
 
-	private static void stage(Recipe recipe, List<int[]> rows)
-	{
-		for (Recipe.Input in : recipe.getInputs())
-		{
-			Node node = in.getNode();
-			if (node.isDosed() && node.getRecipe() != null)
-			{
-				stage(node.getRecipe(), rows);
-				addRow(rows, ids(node.rowIds()));
-			}
-			else
-			{
-				List<Integer> ids = new ArrayList<>();
-				List<Node> tools = new ArrayList<>();
-				chain(node, ids, tools);
-				for (Node t : tools)
-				{
-					ids.add(t.getId());
-				}
-				addRow(rows, ids);
-			}
-		}
-	}
-
-	private static void chain(Node node, List<Integer> ids, List<Node> tools)
+	private static void addTasks(Node node, Set<Node> seen, List<int[]> rows)
 	{
 		Recipe r = node.getRecipe();
-		if (r != null)
+		if (r == null || !seen.add(node))
 		{
-			for (Recipe.Input in : r.getInputs())
-			{
-				chain(in.getNode(), ids, tools);
-			}
-			if (r.getTool() != null)
-			{
-				// Tool-made items (crushed secondaries) show as raw + tool only.
-				if (!tools.contains(r.getTool()))
-				{
-					tools.add(r.getTool());
-				}
-				return;
-			}
+			return;
 		}
-		for (int id : node.rowIds())
+		for (Recipe.Input in : r.getInputs())
 		{
-			if (!ids.contains(id))
+			addTasks(in.getNode(), seen, rows);
+		}
+		addRow(rows, taskIds(r));
+	}
+
+	private static List<Integer> taskIds(Recipe r)
+	{
+		List<Integer> ids = new ArrayList<>();
+		for (Recipe.Input in : r.getInputs())
+		{
+			for (int id : in.getNode().rowIds())
 			{
 				ids.add(id);
 			}
 		}
-	}
-
-	private static List<Integer> ids(int[] arr)
-	{
-		List<Integer> out = new ArrayList<>();
-		for (int id : arr)
+		if (r.getTool() != null)
 		{
-			out.add(id);
+			ids.add(r.getTool().getId());
 		}
-		return out;
+		return ids;
 	}
 
 	private static void addRow(List<int[]> rows, List<Integer> ids)
@@ -233,15 +208,11 @@ public final class PotionPlan
 			rows.add(new Row(n.getName(), n.getId(), have, n.isDosed()));
 		}
 
-		String unit = fin.getYield() == 4 ? "potions (4)"
-			: fin.getYield() == 1 && product.isDosed() ? "doses"
-			: "potions";
-
 		List<Step> steps = new ArrayList<>();
 		if (herbloreLevel > 0 && herbloreLevel < fin.getLevel())
 		{
-			steps.add(new Step(Severity.WARNING, potion.getName() + " needs " + fin.getLevel() + " Herblore (you have " + herbloreLevel + ")"));
-			return new PotionPlan(potion, rows, steps, 0, 0, unit);
+			steps.add(new Step(Severity.WARNING, "Needs " + fin.getLevel() + " Herblore", "You have " + herbloreLevel));
+			return new PotionPlan(potion, rows, steps, 0, 0);
 		}
 
 		// No input yields more than 3 per craft, so this comfortably bounds the search.
@@ -260,7 +231,7 @@ public final class PotionPlan
 		run.makeFinal(fin, makeable);
 		for (Map.Entry<Recipe, Integer> e : run.crafts.entrySet())
 		{
-			steps.add(new Step(Severity.ACTION, String.format(e.getKey().getStepFormat(), e.getValue())));
+			steps.add(new Step(Severity.ACTION, String.format(e.getKey().getStepFormat(), e.getValue()), null));
 		}
 
 		// What stops you making more? Aim for what your best-stocked input
@@ -270,7 +241,7 @@ public final class PotionPlan
 		{
 			target = Math.max(target, maxForInput(in, base, herbloreLevel, bound));
 		}
-		Set<String> warnings = new LinkedHashSet<>();
+		Map<String, String> warnings = new LinkedHashMap<>();
 		if (target > makeable)
 		{
 			Ctx want = new Ctx(base, herbloreLevel, true);
@@ -281,34 +252,31 @@ public final class PotionPlan
 				Map<Node, Integer> group = want.groups.get(n);
 				if (group != null)
 				{
-					StringBuilder sb = new StringBuilder("For " + Catalog.lower(n.getName()) + ": short ");
+					StringBuilder sb = new StringBuilder(n.getName() + ": short ");
 					String sep = "";
 					for (Map.Entry<Node, Integer> g : group.entrySet())
 					{
 						sb.append(sep).append(qty(g.getKey(), g.getValue()));
 						sep = ", ";
 					}
-					warnings.add(sb.toString());
+					warnings.put(sb.toString(), null);
 				}
 				else
 				{
-					warnings.add("Short " + qty(n, e.getValue()) + (n.getSource() != null ? ". " + n.getSource() : ""));
+					warnings.put("Short " + qty(n, e.getValue()), n.getSource());
 				}
 			}
-			warnings.addAll(want.blocked);
+			want.blocked.forEach(b -> warnings.putIfAbsent(b, null));
 		}
-		warnings.addAll(run.blocked);
+		run.blocked.forEach(b -> warnings.putIfAbsent(b, null));
 
-		for (String w : warnings)
-		{
-			steps.add(new Step(Severity.WARNING, w));
-		}
+		warnings.forEach((text, hint) -> steps.add(new Step(Severity.WARNING, text, hint)));
 		if (makeable == 0 && warnings.isEmpty())
 		{
-			steps.add(new Step(Severity.WARNING, "No ingredients found. Open your bank to scan it."));
+			steps.add(new Step(Severity.WARNING, "Nothing found. Open your bank.", null));
 		}
 
-		return new PotionPlan(potion, rows, steps, makeable, makeableNow, unit);
+		return new PotionPlan(potion, rows, steps, makeable, makeableNow);
 	}
 
 	/** Just the "can make" number, for the potion grid. */
@@ -430,7 +398,7 @@ public final class PotionPlan
 
 			if (lvl > 0 && lvl < r.getLevel())
 			{
-				blocked.add(capital(r) + " needs " + r.getLevel() + " Herblore");
+				blocked.add(capital(r) + ": " + r.getLevel() + " Herblore");
 				short_(node, rem);
 				return;
 			}
@@ -444,7 +412,7 @@ public final class PotionPlan
 				int can = Math.min(crafts, srcHave / src.getQty());
 				if (can > 0 && r.getTool() != null && pool.getOrDefault(r.getTool(), 0) <= 0)
 				{
-					blocked.add("You have " + srcHave + " " + Catalog.lower(src.getNode().getName()) + " but no " + Catalog.lower(r.getTool().getName()));
+					blocked.add("No " + Catalog.lower(r.getTool().getName()));
 					can = 0;
 				}
 				if (can > 0)

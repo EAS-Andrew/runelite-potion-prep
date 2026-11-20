@@ -55,6 +55,31 @@ public enum Potion
 		return product.getRecipe().getLevel();
 	}
 
+	/**
+	 * Final crafts per displayed potion. Dose-by-dose recipes (stamina,
+	 * extended antifire, anti-venom) are shown as 4-dose potions.
+	 */
+	public int craftsPerPotion()
+	{
+		return product.isDosed() && product.getRecipe().getYield() == 1 ? 4 : 1;
+	}
+
+	/** Potions you can make from this many final crafts. */
+	public int toPotions(int crafts)
+	{
+		return crafts / craftsPerPotion();
+	}
+
+	/** What one displayed potion is, e.g. "Stamina potion(4)", "Prayer potion(3)". */
+	public String potionName()
+	{
+		if (!product.isDosed())
+		{
+			return getName();
+		}
+		return getName() + (product.getRecipe().getYield() == 3 ? "(3)" : "(4)");
+	}
+
 	@Override
 	public String toString()
 	{

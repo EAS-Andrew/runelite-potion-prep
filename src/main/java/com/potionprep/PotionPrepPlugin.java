@@ -153,7 +153,7 @@ public class PotionPrepPlugin extends Plugin
 			}
 			else
 			{
-				pushToPanel("Open your bank and the ingredients will be lined up.");
+				pushToPanel("Open your bank first");
 			}
 		});
 	}
@@ -405,8 +405,8 @@ public class PotionPrepPlugin extends Plugin
 		}
 		int lvl = herbloreLevel;
 		String status = notice != null ? notice
-			: bankCounts == null ? "Bank not scanned yet. Open your bank to count ingredients."
-			: "Bank last seen " + ago(bankObservedAt) + ". Counts include your inventory.";
+			: bankCounts == null ? "Open your bank to scan it"
+			: "Bank seen " + ago(bankObservedAt);
 		PotionPrepPanel p = panel;
 		SwingUtilities.invokeLater(() -> p.update(plan, status, makeable, lvl));
 	}
