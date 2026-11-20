@@ -2,6 +2,7 @@ package com.potionprep;
 
 import com.google.inject.Provides;
 import java.awt.image.BufferedImage;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -174,7 +175,7 @@ public class PotionPrepPlugin extends Plugin
 	{
 		selected = potion;
 		trackedIds.clear();
-		trackedIds.addAll(PotionPlan.columnItems(potion));
+		trackedIds.addAll(PotionPlan.layoutItems(potion));
 		if (persist)
 		{
 			configManager.setConfiguration(PotionPrepConfig.GROUP, "potion", potion.name());
@@ -194,13 +195,13 @@ public class PotionPrepPlugin extends Plugin
 			return;
 		}
 		int col = Math.max(1, Math.min(BANK_COLUMNS, config.column())) - 1;
-		List<int[]> rows = PotionPlan.columnRows(selected);
+		List<int[]> rows = PotionPlan.layoutRows(selected);
 		Layout layout = new Layout(TAG);
 		for (int row = 0; row < rows.size(); row++)
 		{
 			int[] ids = rows.get(row);
-			// Multi-item rows (potion doses) end at the chosen column and run
-			// leftwards, or rightwards when there isn't room on the left.
+			// Each action row ends at the chosen column and runs leftwards,
+			// or rightwards when there isn't room on the left.
 			int start = Math.max(0, Math.min(col - (ids.length - 1), BANK_COLUMNS - ids.length));
 			for (int i = 0; i < ids.length; i++)
 			{
@@ -395,12 +396,19 @@ public class PotionPrepPlugin extends Plugin
 		{
 			return;
 		}
-		PotionPlan plan = PotionPlan.compute(selected, combinedCounts(), herbloreLevel);
+		Map<Integer, Integer> counts = combinedCounts();
+		PotionPlan plan = PotionPlan.compute(selected, counts, herbloreLevel);
+		Map<Potion, Integer> makeable = new EnumMap<>(Potion.class);
+		for (Potion p : Potion.values())
+		{
+			makeable.put(p, PotionPlan.makeable(p, counts, herbloreLevel));
+		}
+		int lvl = herbloreLevel;
 		String status = notice != null ? notice
 			: bankCounts == null ? "Bank not scanned yet. Open your bank to count ingredients."
 			: "Bank last seen " + ago(bankObservedAt) + ". Counts include your inventory.";
 		PotionPrepPanel p = panel;
-		SwingUtilities.invokeLater(() -> p.update(plan, status));
+		SwingUtilities.invokeLater(() -> p.update(plan, status, makeable, lvl));
 	}
 
 	private static String ago(long at)

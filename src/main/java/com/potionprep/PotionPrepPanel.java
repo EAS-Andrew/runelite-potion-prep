@@ -4,11 +4,13 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.GridLayout;
+import java.util.Map;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
-import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
@@ -17,6 +19,7 @@ import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
+import net.runelite.client.ui.components.IconTextField;
 import net.runelite.client.util.QuantityFormatter;
 
 class PotionPrepPanel extends PluginPanel
@@ -28,19 +31,24 @@ class PotionPrepPanel extends PluginPanel
 	private final PotionPrepPlugin plugin;
 	private final ItemManager itemManager;
 
-	private final JComboBox<Potion> potionBox = new JComboBox<>(Potion.values());
+	private final IconTextField search = new IconTextField();
+	private final PotionGrid grid;
+	private final JLabel selectedLabel = new JLabel();
 	private final JLabel makeableLabel = new JLabel();
 	private final JLabel makeableSub = new JLabel();
 	private final JPanel rowsPanel = new JPanel();
 	private final JPanel stepsPanel = new JPanel();
 	private final JLabel statusLabel = new JLabel();
-	private boolean updating;
 
 	PotionPrepPanel(PotionPrepPlugin plugin, ItemManager itemManager)
 	{
-		super(false);
+		// Wrapped: RuneLite puts the panel in a vertical scroll pane at the
+		// standard sidebar size, so a long panel scrolls instead of forcing
+		// the client window taller.
+		super(true);
 		this.plugin = plugin;
 		this.itemManager = itemManager;
+		this.grid = new PotionGrid(itemManager, plugin::selectFromPanel);
 
 		setLayout(new BorderLayout());
 		setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -56,16 +64,49 @@ class PotionPrepPanel extends PluginPanel
 		content.add(left(title));
 		content.add(Box.createVerticalStrut(8));
 
-		potionBox.setMaximumRowCount(16);
-		potionBox.setFocusable(false);
-		potionBox.addActionListener(e ->
+		search.setIcon(IconTextField.Icon.SEARCH);
+		search.setPreferredSize(new Dimension(PANEL_WIDTH - 20, 30));
+		search.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		search.setHoverBackgroundColor(ColorScheme.DARK_GRAY_HOVER_COLOR);
+		search.setToolTipText("Filter potions; press Enter to pick the first match");
+		search.getDocument().addDocumentListener(new DocumentListener()
 		{
-			if (!updating && potionBox.getSelectedItem() != null)
+			@Override
+			public void insertUpdate(DocumentEvent e)
 			{
-				plugin.selectFromPanel((Potion) potionBox.getSelectedItem());
+				grid.setFilter(search.getText());
+			}
+
+			@Override
+			public void removeUpdate(DocumentEvent e)
+			{
+				grid.setFilter(search.getText());
+			}
+
+			@Override
+			public void changedUpdate(DocumentEvent e)
+			{
+				grid.setFilter(search.getText());
 			}
 		});
-		content.add(stretch(potionBox));
+		search.addActionListener(e ->
+		{
+			Potion first = grid.firstVisible();
+			if (first != null)
+			{
+				plugin.selectFromPanel(first);
+			}
+		});
+		search.addClearListener(() -> grid.setFilter(""));
+		content.add(stretch(search));
+		content.add(Box.createVerticalStrut(6));
+
+		content.add(stretch(grid));
+		content.add(Box.createVerticalStrut(10));
+
+		selectedLabel.setFont(FontManager.getRunescapeBoldFont());
+		selectedLabel.setForeground(Color.WHITE);
+		content.add(left(selectedLabel));
 		content.add(Box.createVerticalStrut(6));
 
 		JPanel buttons = new JPanel(new GridLayout(1, 2, 6, 0));
@@ -113,11 +154,11 @@ class PotionPrepPanel extends PluginPanel
 		add(content, BorderLayout.NORTH);
 	}
 
-	void update(PotionPlan plan, String status)
+	void update(PotionPlan plan, String status, Map<Potion, Integer> makeable, int herbloreLevel)
 	{
-		updating = true;
-		potionBox.setSelectedItem(plan.getPotion());
-		updating = false;
+		grid.setSelected(plan.getPotion());
+		grid.setStats(makeable, herbloreLevel);
+		selectedLabel.setText(plan.getPotion().getName() + "  (level " + plan.getPotion().getLevel() + ")");
 
 		int n = plan.getMakeable();
 		makeableLabel.setText("Can make " + QuantityFormatter.formatNumber(n) + " " + plan.getUnit());

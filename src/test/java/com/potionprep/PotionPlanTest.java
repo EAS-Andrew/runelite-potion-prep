@@ -30,37 +30,48 @@ public class PotionPlanTest
 	}
 
 	@Test
-	public void columnFollowsTheProcessAndOmitsTheFinishedPotion()
+	public void standardPotionHasHerbRowThenSecondaryRow()
 	{
-		assertEquals(Arrays.asList(
-			ItemID.UNIDENTIFIED_RANARR, ItemID.RANARR_WEED, ItemID.VIAL_WATER, ItemID.RANARRVIAL, ItemID.SNAPE_GRASS),
-			PotionPlan.columnItems(Potion.PRAYER));
-
-		assertEquals(Arrays.asList(
-			ItemID.UNIDENTIFIED_LANTADYME, ItemID.LANTADYME, ItemID.VIAL_WATER, ItemID.LANTADYMEVIAL,
-			ItemID.BLUE_DRAGON_SCALE, ItemID.DRAGON_SCALE_DUST, ItemID.PESTLE_AND_MORTAR),
-			PotionPlan.columnItems(Potion.ANTIFIRE));
+		List<int[]> rows = PotionPlan.layoutRows(Potion.PRAYER);
+		assertEquals(2, rows.size());
+		assertArrayEquals(new int[]{ItemID.UNIDENTIFIED_RANARR, ItemID.RANARR_WEED, ItemID.VIAL_WATER, ItemID.RANARRVIAL}, rows.get(0));
+		assertArrayEquals(new int[]{ItemID.SNAPE_GRASS}, rows.get(1));
 	}
 
 	@Test
-	public void staminaPutsSuperEnergyDosesOnOneRow()
+	public void crushRowIsRawThenToolWithoutTheCrushedResult()
 	{
-		List<int[]> rows = PotionPlan.columnRows(Potion.STAMINA);
-		assertEquals(7, rows.size());
-		assertArrayEquals(new int[]{ItemID.MORTMYREMUSHROOM}, rows.get(4));
-		assertArrayEquals(new int[]{ItemID._1DOSE2ENERGY, ItemID._2DOSE2ENERGY, ItemID._3DOSE2ENERGY, ItemID._4DOSE2ENERGY}, rows.get(5));
-		assertArrayEquals(new int[]{ItemID.AMYLASE}, rows.get(6));
-		assertFalse(PotionPlan.columnItems(Potion.STAMINA).contains(ItemID._4DOSESTAMINA));
+		List<int[]> rows = PotionPlan.layoutRows(Potion.SARADOMIN_BREW);
+		assertEquals(2, rows.size());
+		assertArrayEquals(new int[]{ItemID.UNIDENTIFIED_TOADFLAX, ItemID.TOADFLAX, ItemID.VIAL_WATER, ItemID.TOADFLAXVIAL}, rows.get(0));
+		assertArrayEquals(new int[]{ItemID.BIRD_NEST_EMPTY, ItemID.PESTLE_AND_MORTAR}, rows.get(1));
 	}
 
 	@Test
-	public void noDuplicatesAndNoFinishedPotionInAnyColumn()
+	public void staminaRowsChainThroughSuperEnergy()
+	{
+		List<int[]> rows = PotionPlan.layoutRows(Potion.STAMINA);
+		assertEquals(4, rows.size());
+		assertArrayEquals(new int[]{ItemID.UNIDENTIFIED_AVANTOE, ItemID.AVANTOE, ItemID.VIAL_WATER, ItemID.AVANTOEVIAL}, rows.get(0));
+		assertArrayEquals(new int[]{ItemID.MORTMYREMUSHROOM}, rows.get(1));
+		assertArrayEquals(new int[]{ItemID._1DOSE2ENERGY, ItemID._2DOSE2ENERGY, ItemID._3DOSE2ENERGY, ItemID._4DOSE2ENERGY}, rows.get(2));
+		assertArrayEquals(new int[]{ItemID.AMYLASE}, rows.get(3));
+		assertFalse(PotionPlan.layoutItems(Potion.STAMINA).contains(ItemID._4DOSESTAMINA));
+	}
+
+	@Test
+	public void rowsFitTheBankAndSkipTheFinishedPotion()
 	{
 		for (Potion p : Potion.values())
 		{
-			List<Integer> ids = PotionPlan.columnItems(p);
-			assertEquals(p.name(), ids.size(), ids.stream().distinct().count());
-			assertFalse(p.name(), ids.contains(p.getProduct().getId()));
+			for (int[] row : PotionPlan.layoutRows(p))
+			{
+				assertTrue(p.name(), row.length >= 1 && row.length <= PotionPlan.BANK_COLUMNS);
+			}
+			for (int id : p.getProduct().rowIds())
+			{
+				assertFalse(p.name(), PotionPlan.layoutItems(p).contains(id));
+			}
 		}
 	}
 

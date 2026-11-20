@@ -111,25 +111,99 @@ public final class PotionPlan
 		}
 	}
 
+	static final int BANK_COLUMNS = 8;
+
 	/**
-	 * The bank column, one row per ingredient, top to bottom. Most rows hold
-	 * one item; a potion used as an ingredient fills a row with its doses.
+	 * The bank layout: one row per ingredient chain, in process order. The
+	 * herb chain reads grimy, clean, vial, unf; a crushed secondary's row is
+	 * the raw item then the pestle (the crushed result is not shown). A potion
+	 * used as an ingredient brings its own chains' rows first, then a row of
+	 * its doses (1)-(4). The finished potion is not shown. Rows wider than the
+	 * bank wrap.
 	 */
-	public static List<int[]> columnRows(Potion potion)
+	public static List<int[]> layoutRows(Potion potion)
 	{
 		List<int[]> rows = new ArrayList<>();
-		for (Node n : ingredients(potion))
-		{
-			rows.add(n.rowIds());
-		}
+		stage(potion.getProduct().getRecipe(), rows);
 		return rows;
 	}
 
-	/** Every item id in the column. */
-	public static List<Integer> columnItems(Potion potion)
+	private static void stage(Recipe recipe, List<int[]> rows)
+	{
+		for (Recipe.Input in : recipe.getInputs())
+		{
+			Node node = in.getNode();
+			if (node.isDosed() && node.getRecipe() != null)
+			{
+				stage(node.getRecipe(), rows);
+				addRow(rows, ids(node.rowIds()));
+			}
+			else
+			{
+				List<Integer> ids = new ArrayList<>();
+				List<Node> tools = new ArrayList<>();
+				chain(node, ids, tools);
+				for (Node t : tools)
+				{
+					ids.add(t.getId());
+				}
+				addRow(rows, ids);
+			}
+		}
+	}
+
+	private static void chain(Node node, List<Integer> ids, List<Node> tools)
+	{
+		Recipe r = node.getRecipe();
+		if (r != null)
+		{
+			for (Recipe.Input in : r.getInputs())
+			{
+				chain(in.getNode(), ids, tools);
+			}
+			if (r.getTool() != null)
+			{
+				// Tool-made items (crushed secondaries) show as raw + tool only.
+				if (!tools.contains(r.getTool()))
+				{
+					tools.add(r.getTool());
+				}
+				return;
+			}
+		}
+		for (int id : node.rowIds())
+		{
+			if (!ids.contains(id))
+			{
+				ids.add(id);
+			}
+		}
+	}
+
+	private static List<Integer> ids(int[] arr)
+	{
+		List<Integer> out = new ArrayList<>();
+		for (int id : arr)
+		{
+			out.add(id);
+		}
+		return out;
+	}
+
+	private static void addRow(List<int[]> rows, List<Integer> ids)
+	{
+		for (int i = 0; i < ids.size(); i += BANK_COLUMNS)
+		{
+			List<Integer> chunk = ids.subList(i, Math.min(ids.size(), i + BANK_COLUMNS));
+			rows.add(chunk.stream().mapToInt(Integer::intValue).toArray());
+		}
+	}
+
+	/** Every distinct item id in the layout. */
+	public static List<Integer> layoutItems(Potion potion)
 	{
 		Set<Integer> ids = new LinkedHashSet<>();
-		for (int[] row : columnRows(potion))
+		for (int[] row : layoutRows(potion))
 		{
 			for (int id : row)
 			{
@@ -235,6 +309,25 @@ public final class PotionPlan
 		}
 
 		return new PotionPlan(potion, rows, steps, makeable, makeableNow, unit);
+	}
+
+	/** Just the "can make" number, for the potion grid. */
+	public static int makeable(Potion potion, Map<Integer, Integer> counts, int herbloreLevel)
+	{
+		Recipe fin = potion.getProduct().getRecipe();
+		if (herbloreLevel > 0 && herbloreLevel < fin.getLevel())
+		{
+			return 0;
+		}
+		Map<Node, Integer> base = new IdentityHashMap<>();
+		long sum = 1;
+		for (Node n : ingredients(potion))
+		{
+			int have = Math.min(n.count(counts), MAX_UNITS);
+			base.put(n, have);
+			sum += (long) have * 3;
+		}
+		return maxCrafts(fin, base, herbloreLevel, true, (int) Math.min(sum, MAX_UNITS * 3L));
 	}
 
 	private static String qty(Node n, int amount)
