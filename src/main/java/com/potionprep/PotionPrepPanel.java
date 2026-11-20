@@ -1,0 +1,234 @@
+package com.potionprep;
+
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.GridLayout;
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.SwingConstants;
+import javax.swing.border.EmptyBorder;
+import net.runelite.client.game.ItemManager;
+import net.runelite.client.ui.ColorScheme;
+import net.runelite.client.ui.FontManager;
+import net.runelite.client.ui.PluginPanel;
+import net.runelite.client.util.QuantityFormatter;
+
+class PotionPrepPanel extends PluginPanel
+{
+	private static final Color GOOD = new Color(0x5FBF5F);
+	private static final Color ACTION = new Color(0xFFB000);
+	private static final Color BAD = new Color(0xE05A5A);
+
+	private final PotionPrepPlugin plugin;
+	private final ItemManager itemManager;
+
+	private final JComboBox<Potion> potionBox = new JComboBox<>(Potion.values());
+	private final JLabel makeableLabel = new JLabel();
+	private final JLabel makeableSub = new JLabel();
+	private final JPanel rowsPanel = new JPanel();
+	private final JPanel stepsPanel = new JPanel();
+	private final JLabel statusLabel = new JLabel();
+	private boolean updating;
+
+	PotionPrepPanel(PotionPrepPlugin plugin, ItemManager itemManager)
+	{
+		super(false);
+		this.plugin = plugin;
+		this.itemManager = itemManager;
+
+		setLayout(new BorderLayout());
+		setBorder(new EmptyBorder(10, 10, 10, 10));
+		setBackground(ColorScheme.DARK_GRAY_COLOR);
+
+		JPanel content = new JPanel();
+		content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+		content.setBackground(ColorScheme.DARK_GRAY_COLOR);
+
+		JLabel title = new JLabel("Potion Prep");
+		title.setFont(FontManager.getRunescapeBoldFont());
+		title.setForeground(Color.WHITE);
+		content.add(left(title));
+		content.add(Box.createVerticalStrut(8));
+
+		potionBox.setMaximumRowCount(16);
+		potionBox.setFocusable(false);
+		potionBox.addActionListener(e ->
+		{
+			if (!updating && potionBox.getSelectedItem() != null)
+			{
+				plugin.selectFromPanel((Potion) potionBox.getSelectedItem());
+			}
+		});
+		content.add(stretch(potionBox));
+		content.add(Box.createVerticalStrut(6));
+
+		JPanel buttons = new JPanel(new GridLayout(1, 2, 6, 0));
+		buttons.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		JButton show = new JButton("Show in bank");
+		show.setFocusable(false);
+		show.addActionListener(e -> plugin.showInBank());
+		JButton clear = new JButton("Show all");
+		clear.setToolTipText("Return the bank to its normal view");
+		clear.setFocusable(false);
+		clear.addActionListener(e -> plugin.closeInBank());
+		buttons.add(show);
+		buttons.add(clear);
+		content.add(stretch(buttons));
+		content.add(Box.createVerticalStrut(12));
+
+		JPanel summary = new JPanel();
+		summary.setLayout(new BoxLayout(summary, BoxLayout.Y_AXIS));
+		summary.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		summary.setBorder(new EmptyBorder(8, 8, 8, 8));
+		makeableLabel.setFont(FontManager.getRunescapeBoldFont());
+		makeableSub.setFont(FontManager.getRunescapeSmallFont());
+		makeableSub.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		summary.add(left(makeableLabel));
+		summary.add(left(makeableSub));
+		content.add(stretch(summary));
+		content.add(Box.createVerticalStrut(10));
+
+		content.add(left(heading("Ingredients")));
+		rowsPanel.setLayout(new BoxLayout(rowsPanel, BoxLayout.Y_AXIS));
+		rowsPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		content.add(stretch(rowsPanel));
+		content.add(Box.createVerticalStrut(10));
+
+		content.add(left(heading("To do")));
+		stepsPanel.setLayout(new BoxLayout(stepsPanel, BoxLayout.Y_AXIS));
+		stepsPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		content.add(stretch(stepsPanel));
+		content.add(Box.createVerticalStrut(10));
+
+		statusLabel.setFont(FontManager.getRunescapeSmallFont());
+		statusLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		content.add(left(statusLabel));
+
+		add(content, BorderLayout.NORTH);
+	}
+
+	void update(PotionPlan plan, String status)
+	{
+		updating = true;
+		potionBox.setSelectedItem(plan.getPotion());
+		updating = false;
+
+		int n = plan.getMakeable();
+		makeableLabel.setText("Can make " + QuantityFormatter.formatNumber(n) + " " + plan.getUnit());
+		makeableLabel.setForeground(n > 0 ? GOOD : BAD);
+		makeableSub.setText(n == 0 ? "Missing ingredients"
+			: plan.getMakeableNow() == n ? "Everything is prepped"
+			: plan.getMakeableNow() + " right now, " + (n - plan.getMakeableNow()) + " after prep");
+
+		rowsPanel.removeAll();
+		for (PotionPlan.Row row : plan.getRows())
+		{
+			rowsPanel.add(ingredientRow(row));
+			rowsPanel.add(Box.createVerticalStrut(2));
+		}
+
+		stepsPanel.removeAll();
+		for (PotionPlan.Step step : plan.getSteps())
+		{
+			JLabel l = new JLabel(wrap(bullet(step.getSeverity()) + step.getText()));
+			l.setFont(FontManager.getRunescapeSmallFont());
+			l.setForeground(color(step.getSeverity()));
+			l.setBorder(new EmptyBorder(2, 0, 2, 0));
+			stepsPanel.add(left(l));
+		}
+
+		statusLabel.setText(wrap(status));
+		revalidate();
+		repaint();
+	}
+
+	private JPanel ingredientRow(PotionPlan.Row row)
+	{
+		JPanel p = new JPanel(new BorderLayout(6, 0));
+		p.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		p.setBorder(new EmptyBorder(2, 4, 2, 8));
+		p.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+
+		JLabel icon = new JLabel();
+		icon.setPreferredSize(new Dimension(36, 32));
+		icon.setHorizontalAlignment(SwingConstants.CENTER);
+		itemManager.getImage(row.getItemId()).addTo(icon);
+		p.add(icon, BorderLayout.WEST);
+
+		JLabel name = new JLabel(row.getName());
+		name.setFont(FontManager.getRunescapeSmallFont());
+		name.setForeground(row.getHave() > 0 ? Color.WHITE : ColorScheme.MEDIUM_GRAY_COLOR);
+		p.add(name, BorderLayout.CENTER);
+
+		JLabel qty = new JLabel(QuantityFormatter.quantityToStackSize(row.getHave()) + (row.isDoses() ? " doses" : ""));
+		if (row.isDoses())
+		{
+			qty.setToolTipText("All doses (1) to (4) combined");
+		}
+		qty.setFont(FontManager.getRunescapeSmallFont());
+		qty.setForeground(row.getHave() > 0 ? GOOD : ColorScheme.MEDIUM_GRAY_COLOR);
+		p.add(qty, BorderLayout.EAST);
+		return p;
+	}
+
+	private static JLabel heading(String text)
+	{
+		JLabel l = new JLabel(text);
+		l.setFont(FontManager.getRunescapeSmallFont());
+		l.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		l.setBorder(BorderFactory.createEmptyBorder(0, 0, 4, 0));
+		return l;
+	}
+
+	private static String bullet(PotionPlan.Severity s)
+	{
+		switch (s)
+		{
+			case WARNING:
+				return "! ";
+			default:
+				return "&#9675; ";
+		}
+	}
+
+	private static Color color(PotionPlan.Severity s)
+	{
+		switch (s)
+		{
+			case WARNING:
+				return BAD;
+			default:
+				return ACTION;
+		}
+	}
+
+	private static String wrap(String text)
+	{
+		return "<html><body style='width:190px'>" + text + "</body></html>";
+	}
+
+	private static JPanel left(java.awt.Component c)
+	{
+		JPanel p = new JPanel(new BorderLayout());
+		p.setOpaque(false);
+		p.add(c, BorderLayout.WEST);
+		p.setAlignmentX(LEFT_ALIGNMENT);
+		p.setMaximumSize(new Dimension(Integer.MAX_VALUE, c.getPreferredSize().height + 400));
+		return p;
+	}
+
+	private static JPanel stretch(java.awt.Component c)
+	{
+		JPanel p = new JPanel(new BorderLayout());
+		p.setOpaque(false);
+		p.add(c, BorderLayout.CENTER);
+		p.setAlignmentX(LEFT_ALIGNMENT);
+		return p;
+	}
+}

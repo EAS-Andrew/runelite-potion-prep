@@ -1,0 +1,426 @@
+package com.potionprep;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import lombok.Getter;
+import lombok.Value;
+
+/**
+ * Walks a potion's recipe tree against what the player holds: how many can
+ * be made, which prep steps (clean, unf, crush, intermediate potions) get
+ * there, and what is short. No client access, so it is unit-testable.
+ */
+@Getter
+public final class PotionPlan
+{
+	@Value
+	public static class Row
+	{
+		String name;
+		int itemId;
+		int have;
+		boolean doses;
+	}
+
+	public enum Severity
+	{
+		ACTION,
+		WARNING
+	}
+
+	@Value
+	public static class Step
+	{
+		Severity severity;
+		String text;
+	}
+
+	private static final int MAX_UNITS = 1_000_000;
+
+	private final Potion potion;
+	private final List<Row> rows;
+	private final List<Step> steps;
+	/** Final crafts possible once all prep is done. */
+	private final int makeable;
+	/** Final crafts possible with no prep at all. */
+	private final int makeableNow;
+	/** What one final craft is called: "potions", "doses", "potions (4)". */
+	private final String unit;
+
+	private PotionPlan(Potion potion, List<Row> rows, List<Step> steps, int makeable, int makeableNow, String unit)
+	{
+		this.potion = potion;
+		this.rows = Collections.unmodifiableList(rows);
+		this.steps = Collections.unmodifiableList(steps);
+		this.makeable = makeable;
+		this.makeableNow = makeableNow;
+		this.unit = unit;
+	}
+
+	/**
+	 * Every ingredient in the tree, in the order you work through it: each
+	 * input's own chain first (grimy, clean, vial, unf, raw, secondary...),
+	 * tools last. The finished potion itself is not included.
+	 */
+	static List<Node> ingredients(Potion potion)
+	{
+		Set<Node> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+		List<Node> out = new ArrayList<>();
+		List<Node> tools = new ArrayList<>();
+		for (Recipe.Input in : potion.getProduct().getRecipe().getInputs())
+		{
+			visit(in.getNode(), seen, out, tools);
+		}
+		for (Node t : tools)
+		{
+			if (seen.add(t))
+			{
+				out.add(t);
+			}
+		}
+		return out;
+	}
+
+	private static void visit(Node node, Set<Node> seen, List<Node> out, List<Node> tools)
+	{
+		if (seen.contains(node))
+		{
+			return;
+		}
+		Recipe r = node.getRecipe();
+		if (r != null)
+		{
+			for (Recipe.Input in : r.getInputs())
+			{
+				visit(in.getNode(), seen, out, tools);
+			}
+			if (r.getTool() != null && !tools.contains(r.getTool()))
+			{
+				tools.add(r.getTool());
+			}
+		}
+		if (seen.add(node))
+		{
+			out.add(node);
+		}
+	}
+
+	/**
+	 * The bank column, one row per ingredient, top to bottom. Most rows hold
+	 * one item; a potion used as an ingredient fills a row with its doses.
+	 */
+	public static List<int[]> columnRows(Potion potion)
+	{
+		List<int[]> rows = new ArrayList<>();
+		for (Node n : ingredients(potion))
+		{
+			rows.add(n.rowIds());
+		}
+		return rows;
+	}
+
+	/** Every item id in the column. */
+	public static List<Integer> columnItems(Potion potion)
+	{
+		Set<Integer> ids = new LinkedHashSet<>();
+		for (int[] row : columnRows(potion))
+		{
+			for (int id : row)
+			{
+				ids.add(id);
+			}
+		}
+		return new ArrayList<>(ids);
+	}
+
+	/**
+	 * @param counts        item id to quantity, bank plus inventory
+	 * @param herbloreLevel real Herblore level, or 0 if unknown
+	 */
+	public static PotionPlan compute(Potion potion, Map<Integer, Integer> counts, int herbloreLevel)
+	{
+		Node product = potion.getProduct();
+		Recipe fin = product.getRecipe();
+		List<Node> nodes = ingredients(potion);
+
+		Map<Node, Integer> base = new IdentityHashMap<>();
+		List<Row> rows = new ArrayList<>();
+		for (Node n : nodes)
+		{
+			// Cap so the simulation's arithmetic can never overflow.
+			int have = Math.min(n.count(counts), MAX_UNITS);
+			base.put(n, have);
+			rows.add(new Row(n.getName(), n.getId(), have, n.isDosed()));
+		}
+
+		String unit = fin.getYield() == 4 ? "potions (4)"
+			: fin.getYield() == 1 && product.isDosed() ? "doses"
+			: "potions";
+
+		List<Step> steps = new ArrayList<>();
+		if (herbloreLevel > 0 && herbloreLevel < fin.getLevel())
+		{
+			steps.add(new Step(Severity.WARNING, potion.getName() + " needs " + fin.getLevel() + " Herblore (you have " + herbloreLevel + ")"));
+			return new PotionPlan(potion, rows, steps, 0, 0, unit);
+		}
+
+		// No input yields more than 3 per craft, so this comfortably bounds the search.
+		long sum = 1;
+		for (int v : base.values())
+		{
+			sum += (long) v * 3;
+		}
+		int bound = (int) Math.min(sum, MAX_UNITS * 3L);
+
+		int makeable = maxCrafts(fin, base, herbloreLevel, true, bound);
+		int makeableNow = maxCrafts(fin, base, herbloreLevel, false, bound);
+
+		// Prep steps that get you to `makeable`, in the order you would do them.
+		Ctx run = new Ctx(base, herbloreLevel, true);
+		run.makeFinal(fin, makeable);
+		for (Map.Entry<Recipe, Integer> e : run.crafts.entrySet())
+		{
+			steps.add(new Step(Severity.ACTION, String.format(e.getKey().getStepFormat(), e.getValue())));
+		}
+
+		// What stops you making more? Aim for what your best-stocked input
+		// would allow, and list what that needs.
+		int target = 0;
+		for (Recipe.Input in : fin.getInputs())
+		{
+			target = Math.max(target, maxForInput(in, base, herbloreLevel, bound));
+		}
+		Set<String> warnings = new LinkedHashSet<>();
+		if (target > makeable)
+		{
+			Ctx want = new Ctx(base, herbloreLevel, true);
+			want.makeFinal(fin, target);
+			for (Map.Entry<Node, Integer> e : want.shortfalls.entrySet())
+			{
+				Node n = e.getKey();
+				Map<Node, Integer> group = want.groups.get(n);
+				if (group != null)
+				{
+					StringBuilder sb = new StringBuilder("For " + Catalog.lower(n.getName()) + ": short ");
+					String sep = "";
+					for (Map.Entry<Node, Integer> g : group.entrySet())
+					{
+						sb.append(sep).append(qty(g.getKey(), g.getValue()));
+						sep = ", ";
+					}
+					warnings.add(sb.toString());
+				}
+				else
+				{
+					warnings.add("Short " + qty(n, e.getValue()) + (n.getSource() != null ? ". " + n.getSource() : ""));
+				}
+			}
+			warnings.addAll(want.blocked);
+		}
+		warnings.addAll(run.blocked);
+
+		for (String w : warnings)
+		{
+			steps.add(new Step(Severity.WARNING, w));
+		}
+		if (makeable == 0 && warnings.isEmpty())
+		{
+			steps.add(new Step(Severity.WARNING, "No ingredients found. Open your bank to scan it."));
+		}
+
+		return new PotionPlan(potion, rows, steps, makeable, makeableNow, unit);
+	}
+
+	private static String qty(Node n, int amount)
+	{
+		return n.isDosed() ? amount + " doses of " + Catalog.lower(n.getName()) : amount + " " + Catalog.lower(n.getName());
+	}
+
+	private static int maxCrafts(Recipe fin, Map<Node, Integer> base, int lvl, boolean allowCraft, int bound)
+	{
+		int lo = 0;
+		int hi = bound;
+		while (lo < hi)
+		{
+			int mid = (lo + hi + 1) >>> 1;
+			Ctx c = new Ctx(base, lvl, allowCraft);
+			c.makeFinal(fin, mid);
+			if (c.shortfalls.isEmpty())
+			{
+				lo = mid;
+			}
+			else
+			{
+				hi = mid - 1;
+			}
+		}
+		return lo;
+	}
+
+	/** Most final crafts this one input could supply, ignoring the others. */
+	private static int maxForInput(Recipe.Input in, Map<Node, Integer> base, int lvl, int bound)
+	{
+		int lo = 0;
+		int hi = bound;
+		while (lo < hi)
+		{
+			int mid = (lo + hi + 1) >>> 1;
+			Ctx c = new Ctx(base, lvl, true);
+			c.need(in.getNode(), in.getQty() * mid);
+			if (c.shortfalls.isEmpty())
+			{
+				lo = mid;
+			}
+			else
+			{
+				hi = mid - 1;
+			}
+		}
+		return lo;
+	}
+
+	/** One simulated attempt: a private copy of the pool, consumed greedily. */
+	private static final class Ctx
+	{
+		final Map<Node, Integer> pool;
+		final int lvl;
+		final boolean allowCraft;
+		final Map<Recipe, Integer> crafts = new LinkedHashMap<>();
+		Map<Node, Integer> shortfalls = new LinkedHashMap<>();
+		/** Leaf shortages behind a short intermediate potion. */
+		final Map<Node, Map<Node, Integer>> groups = new LinkedHashMap<>();
+		final Set<String> blocked = new LinkedHashSet<>();
+
+		Ctx(Map<Node, Integer> base, int lvl, boolean allowCraft)
+		{
+			this.pool = new IdentityHashMap<>(base);
+			this.lvl = lvl;
+			this.allowCraft = allowCraft;
+		}
+
+		void makeFinal(Recipe fin, int n)
+		{
+			if (n <= 0)
+			{
+				return;
+			}
+			for (Recipe.Input in : fin.getInputs())
+			{
+				need(in.getNode(), in.getQty() * n);
+			}
+			crafts.merge(fin, n, Integer::sum);
+		}
+
+		void need(Node node, int amount)
+		{
+			int have = pool.getOrDefault(node, 0);
+			int take = Math.min(have, amount);
+			pool.put(node, have - take);
+			int rem = amount - take;
+			if (rem == 0)
+			{
+				return;
+			}
+
+			Recipe r = node.getRecipe();
+			if (r == null || !allowCraft)
+			{
+				short_(node, rem);
+				return;
+			}
+
+			if (lvl > 0 && lvl < r.getLevel())
+			{
+				blocked.add(capital(r) + " needs " + r.getLevel() + " Herblore");
+				short_(node, rem);
+				return;
+			}
+
+			if (r.isAltForm())
+			{
+				// Cleaning / crushing: limited by the raw form you hold.
+				Recipe.Input src = r.getInputs().get(0);
+				int crafts = ceilDiv(rem, r.getYield());
+				int srcHave = pool.getOrDefault(src.getNode(), 0);
+				int can = Math.min(crafts, srcHave / src.getQty());
+				if (can > 0 && r.getTool() != null && pool.getOrDefault(r.getTool(), 0) <= 0)
+				{
+					blocked.add("You have " + srcHave + " " + Catalog.lower(src.getNode().getName()) + " but no " + Catalog.lower(r.getTool().getName()));
+					can = 0;
+				}
+				if (can > 0)
+				{
+					pool.put(src.getNode(), srcHave - can * src.getQty());
+					this.crafts.merge(r, can, Integer::sum);
+					int produced = can * r.getYield();
+					int used = Math.min(produced, rem);
+					pool.merge(node, produced - used, Integer::sum);
+					rem -= used;
+				}
+				if (rem > 0)
+				{
+					short_(node, rem);
+				}
+				return;
+			}
+
+			int crafts = ceilDiv(rem, r.getYield());
+			// Shortages inside an intermediate potion's chain are grouped
+			// under that potion, so super combat reads "for super defence:
+			// short 10 cadantine" instead of a flat list of leaves.
+			Map<Node, Integer> outer = shortfalls;
+			Map<Node, Integer> inner = node.isDosed() ? new LinkedHashMap<>() : outer;
+			shortfalls = inner;
+			for (Recipe.Input in : r.getInputs())
+			{
+				need(in.getNode(), in.getQty() * crafts);
+			}
+			shortfalls = outer;
+			if (inner != outer && !inner.isEmpty())
+			{
+				short_(node, rem);
+				groups.computeIfAbsent(node, k -> new LinkedHashMap<>()).putAll(inner);
+			}
+			this.crafts.merge(r, crafts, Integer::sum);
+			pool.merge(node, crafts * r.getYield() - rem, Integer::sum);
+		}
+
+		private void short_(Node node, int qty)
+		{
+			shortfalls.merge(node, qty, Integer::sum);
+		}
+
+		private static String capital(Recipe r)
+		{
+			// "Clean %d grimy torstol" -> "Cleaning grimy torstol"
+			String s = r.getStepFormat().replace("%d ", "");
+			int sp = s.indexOf(' ');
+			String verb = sp < 0 ? s : s.substring(0, sp);
+			String rest = sp < 0 ? "" : s.substring(sp);
+			switch (verb)
+			{
+				case "Clean":
+					return "Cleaning" + rest;
+				case "Make":
+					return "Making" + rest;
+				case "Crush":
+					return "Crushing" + rest;
+				case "Mix":
+					return "Mixing" + rest;
+				default:
+					return s;
+			}
+		}
+
+		private static int ceilDiv(int a, int b)
+		{
+			return (a + b - 1) / b;
+		}
+	}
+}
