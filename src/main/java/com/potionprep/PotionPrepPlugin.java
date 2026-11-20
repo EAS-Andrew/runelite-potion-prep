@@ -3,7 +3,9 @@ package com.potionprep;
 import com.google.inject.Provides;
 import java.awt.image.BufferedImage;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -97,7 +99,10 @@ public class PotionPrepPlugin extends Plugin
 	// without it means the player clicked away.
 	private boolean shownThisVisit;
 	private final Map<Integer, Integer> invCounts = new HashMap<>();
-	private int herbloreLevel;
+	private int herbloreLevel;   // real
+	private int boostedLevel;
+	// Whether the current layout includes the botanical pie row.
+	private boolean layoutHasPie;
 
 	@Provides
 	PotionPrepConfig provideConfig(ConfigManager configManager)
@@ -126,6 +131,7 @@ public class PotionPrepPlugin extends Plugin
 			if (client.getGameState() == GameState.LOGGED_IN)
 			{
 				herbloreLevel = client.getRealSkillLevel(Skill.HERBLORE);
+				boostedLevel = client.getBoostedSkillLevel(Skill.HERBLORE);
 				readInventory(client.getItemContainer(InventoryID.INV));
 				readBank(client.getItemContainer(InventoryID.BANK));
 			}
@@ -184,6 +190,11 @@ public class PotionPrepPlugin extends Plugin
 
 	// --- Client thread ---
 
+	private boolean pieNeeded()
+	{
+		return selected != null && PotionPlan.needsPie(selected, herbloreLevel, boostedLevel);
+	}
+
 	private boolean shouldFilter()
 	{
 		return config.showInBank() && panelOpen && selected != null;
@@ -222,6 +233,11 @@ public class PotionPrepPlugin extends Plugin
 		selected = potion;
 		trackedIds.clear();
 		trackedIds.addAll(PotionPlan.layoutItems(potion));
+		layoutHasPie = pieNeeded();
+		if (layoutHasPie)
+		{
+			Arrays.stream(PotionPlan.PIE_IDS).forEach(trackedIds::add);
+		}
 		if (persist)
 		{
 			configManager.setConfiguration(PotionPrepConfig.GROUP, "potion", potion.name());
@@ -242,7 +258,12 @@ public class PotionPrepPlugin extends Plugin
 			return;
 		}
 		int col = Math.max(1, Math.min(BANK_COLUMNS, config.column())) - 1;
-		List<int[]> rows = PotionPlan.layoutRows(selected);
+		List<int[]> rows = new ArrayList<>(PotionPlan.layoutRows(selected));
+		if (layoutHasPie)
+		{
+			// Eating the pie is the first task.
+			rows.add(0, PotionPlan.PIE_IDS);
+		}
 		Layout layout = new Layout(TAG);
 		for (int row = 0; row < rows.size(); row++)
 		{
@@ -447,9 +468,16 @@ public class PotionPrepPlugin extends Plugin
 	@Subscribe
 	public void onStatChanged(StatChanged event)
 	{
-		if (event.getSkill() == Skill.HERBLORE && event.getLevel() != herbloreLevel)
+		if (event.getSkill() == Skill.HERBLORE
+			&& (event.getLevel() != herbloreLevel || event.getBoostedLevel() != boostedLevel))
 		{
 			herbloreLevel = event.getLevel();
+			boostedLevel = event.getBoostedLevel();
+			// Eating a pie (or it wearing off) changes whether the pie row is needed.
+			if (selected != null && pieNeeded() != layoutHasPie)
+			{
+				select(selected, false);
+			}
 			pushToPanel(null);
 		}
 	}
@@ -466,6 +494,7 @@ public class PotionPrepPlugin extends Plugin
 				storageCounts = new HashMap<>();
 				collapsed = new HashSet<>();
 				herbloreLevel = 0;
+				boostedLevel = 0;
 			}
 			invCounts.clear();
 			pushToPanel(null);
@@ -475,6 +504,11 @@ public class PotionPrepPlugin extends Plugin
 			clientThread.invokeLater(() ->
 			{
 				herbloreLevel = client.getRealSkillLevel(Skill.HERBLORE);
+				boostedLevel = client.getBoostedSkillLevel(Skill.HERBLORE);
+				if (selected != null && pieNeeded() != layoutHasPie)
+				{
+					select(selected, false);
+				}
 				pushToPanel(null);
 			});
 		}
@@ -547,19 +581,26 @@ public class PotionPrepPlugin extends Plugin
 			return;
 		}
 		Map<Integer, Integer> counts = combinedCounts();
-		PotionPlan plan = PotionPlan.compute(selected, counts, herbloreLevel);
+		int boosted = boostedLevel > 0 ? boostedLevel : herbloreLevel;
+		PotionPlan plan = PotionPlan.compute(selected, counts,
+			PotionPlan.effectiveLevel(selected, herbloreLevel, boosted), PotionPlan.needsPie(selected, herbloreLevel, boosted));
 		Map<Potion, Integer> makeable = new EnumMap<>(Potion.class);
+		Set<Potion> pie = EnumSet.noneOf(Potion.class);
 		for (Potion p : Potion.values())
 		{
-			makeable.put(p, PotionPlan.makeable(p, counts, herbloreLevel));
+			makeable.put(p, PotionPlan.makeable(p, counts, PotionPlan.effectiveLevel(p, herbloreLevel, boosted)));
+			if (PotionPlan.needsPie(p, herbloreLevel, boosted))
+			{
+				pie.add(p);
+			}
 		}
-		int lvl = herbloreLevel;
+		int lvl = boosted;
 		String status = notice != null ? notice
 			: bankCounts == null ? "Open your bank to scan it"
 			: "Bank seen " + ago(bankObservedAt);
 		PotionPrepPanel p = panel;
 		boolean showing = config.showInBank();
-		SwingUtilities.invokeLater(() -> p.update(plan, status, makeable, lvl, showing));
+		SwingUtilities.invokeLater(() -> p.update(plan, status, makeable, lvl, pie, showing));
 	}
 
 	private static String ago(long at)

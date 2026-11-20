@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import lombok.Getter;
 import lombok.Value;
+import net.runelite.api.gameval.ItemID;
 
 /**
  * Walks a potion's recipe tree against what the player holds: how many can
@@ -45,6 +46,25 @@ public final class PotionPlan
 	}
 
 	private static final int MAX_UNITS = 1_000_000;
+
+	/** A botanical pie (whole or half) boosts Herblore by 4. */
+	public static final int PIE_BOOST = 4;
+	public static final int[] PIE_IDS = {ItemID.BOTANICAL_PIE, ItemID.HALF_BOTANICAL_PIE};
+
+	/**
+	 * True when your current level is too low for this potion but a
+	 * botanical pie on top of your real level would be enough.
+	 */
+	public static boolean needsPie(Potion potion, int realLevel, int boostedLevel)
+	{
+		return realLevel > 0 && boostedLevel < potion.getLevel() && realLevel + PIE_BOOST >= potion.getLevel();
+	}
+
+	/** The level to plan with: boosted, or real + pie when a pie would unlock it. */
+	public static int effectiveLevel(Potion potion, int realLevel, int boostedLevel)
+	{
+		return needsPie(potion, realLevel, boostedLevel) ? realLevel + PIE_BOOST : boostedLevel;
+	}
 
 	private final Potion potion;
 	private final List<Row> rows;
@@ -195,6 +215,15 @@ public final class PotionPlan
 	 */
 	public static PotionPlan compute(Potion potion, Map<Integer, Integer> counts, int herbloreLevel)
 	{
+		return compute(potion, counts, herbloreLevel, false);
+	}
+
+	/**
+	 * @param pie the plan assumes a botanical pie; adds it as the first step
+	 *            and as an ingredient row
+	 */
+	public static PotionPlan compute(Potion potion, Map<Integer, Integer> counts, int herbloreLevel, boolean pie)
+	{
 		Node product = potion.getProduct();
 		Recipe fin = product.getRecipe();
 		List<Node> nodes = ingredients(potion);
@@ -209,7 +238,20 @@ public final class PotionPlan
 			rows.add(new Row(n.getName(), n.getId(), have, n.isDosed()));
 		}
 
+		if (pie)
+		{
+			int pies = counts.getOrDefault(ItemID.BOTANICAL_PIE, 0) + counts.getOrDefault(ItemID.HALF_BOTANICAL_PIE, 0);
+			rows.add(0, new Row("Botanical pie", ItemID.BOTANICAL_PIE, pies, false));
+		}
+
 		List<Step> steps = new ArrayList<>();
+		if (pie)
+		{
+			int pies = rows.get(0).getHave();
+			steps.add(pies > 0
+				? new Step(Severity.ACTION, "Eat a botanical pie (+" + PIE_BOOST + ")", "Needs " + potion.getLevel() + " Herblore")
+				: new Step(Severity.WARNING, "Need a botanical pie (+" + PIE_BOOST + ")", "Needs " + potion.getLevel() + " Herblore"));
+		}
 		if (herbloreLevel > 0 && herbloreLevel < fin.getLevel())
 		{
 			steps.add(new Step(Severity.WARNING, "Needs " + fin.getLevel() + " Herblore", "You have " + herbloreLevel));

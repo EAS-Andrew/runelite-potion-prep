@@ -12,7 +12,7 @@ Pick a potion and your bank shows only what you need to make it, laid out in the
 1. Open the **Potion Prep** panel (green flask icon) and click a potion. Search narrows the grid; Enter picks the first match.
 2. Turn on **Show in bank**. While it's on and the Potion Prep panel is open, your bank shows just that potion's ingredients. Close the panel, click any other bank tab, or turn the toggle off to get your normal bank back.
 
-Each grid tile shows how many of that potion you can make from your bank and inventory. Red **Lv** means your Herblore level is too low.
+Each grid tile shows how many of that potion you can make from your bank and inventory. Red **Lv** means your Herblore level is too low. An orange count means you can make it with a botanical pie (+4 Herblore). The pie then gets its own row at the top of the bank view, and the first step tells you to eat it.
 
 ## Bank layout
 

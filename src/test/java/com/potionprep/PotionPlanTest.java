@@ -198,4 +198,24 @@ public class PotionPlanTest
 		PotionPlan plan = PotionPlan.compute(Potion.PRAYER, counts(ItemID.RANARRVIAL, 5, ItemID.SNAPE_GRASS, 50), 99);
 		assertEquals(5, plan.getMakeable());
 	}
+
+	@Test
+	public void pieUnlocksPotionsWithinFourLevels()
+	{
+		// Saradomin brew is level 81.
+		assertTrue(PotionPlan.needsPie(Potion.SARADOMIN_BREW, 77, 77));
+		assertEquals(81, PotionPlan.effectiveLevel(Potion.SARADOMIN_BREW, 77, 77));
+		assertFalse(PotionPlan.needsPie(Potion.SARADOMIN_BREW, 76, 76));   // pie isn't enough
+		assertFalse(PotionPlan.needsPie(Potion.SARADOMIN_BREW, 77, 81));   // already boosted
+		assertFalse(PotionPlan.needsPie(Potion.SARADOMIN_BREW, 81, 81));   // no boost needed
+
+		Map<Integer, Integer> c = counts(ItemID.TOADFLAXVIAL, 5, ItemID.CRUSHED_BIRD_NEST, 5, ItemID.HALF_BOTANICAL_PIE, 1);
+		PotionPlan plan = PotionPlan.compute(Potion.SARADOMIN_BREW, c, PotionPlan.effectiveLevel(Potion.SARADOMIN_BREW, 77, 77), true);
+		assertEquals(5, plan.getMakeable());
+		assertEquals("Eat a botanical pie (+4)", plan.getSteps().get(0).getText());
+		assertEquals(1, plan.getRows().get(0).getHave());
+
+		PotionPlan noPie = PotionPlan.compute(Potion.SARADOMIN_BREW, counts(ItemID.TOADFLAXVIAL, 5, ItemID.CRUSHED_BIRD_NEST, 5), 81, true);
+		assertEquals("Need a botanical pie (+4)", noPie.getSteps().get(0).getText());
+	}
 }

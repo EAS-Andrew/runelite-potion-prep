@@ -8,6 +8,7 @@ import java.awt.event.MouseEvent;
 import java.util.EnumMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.JLabel;
@@ -27,6 +28,7 @@ class PotionGrid extends JPanel
 	private static final int COLUMNS = 5;
 	private static final Color GOOD = new Color(0x5FBF5F);
 	private static final Color BAD = new Color(0xE05A5A);
+	private static final Color PIE = new Color(0xFFB000);
 
 	private final Map<Potion, Tile> tiles = new EnumMap<>(Potion.class);
 	private final Consumer<Potion> onSelect;
@@ -76,12 +78,17 @@ class PotionGrid extends JPanel
 		tiles.values().forEach(Tile::paintState);
 	}
 
-	void setStats(Map<Potion, Integer> makeable, int herbloreLevel)
+	/**
+	 * @param boostedLevel current Herblore level, 0 if unknown
+	 * @param pie          potions you can only make with a botanical pie
+	 */
+	void setStats(Map<Potion, Integer> makeable, int boostedLevel, Set<Potion> pie)
 	{
 		for (Tile t : tiles.values())
 		{
 			int lvl = t.potion.getLevel();
-			if (herbloreLevel > 0 && herbloreLevel < lvl)
+			t.pie = pie.contains(t.potion);
+			if (!t.pie && boostedLevel > 0 && boostedLevel < lvl)
 			{
 				t.count.setText("Lv " + lvl);
 				t.count.setForeground(BAD);
@@ -91,7 +98,7 @@ class PotionGrid extends JPanel
 			{
 				int n = t.potion.toPotions(makeable.getOrDefault(t.potion, 0));
 				t.count.setText(QuantityFormatter.quantityToStackSize(n));
-				t.count.setForeground(n > 0 ? GOOD : ColorScheme.MEDIUM_GRAY_COLOR);
+				t.count.setForeground(t.pie ? PIE : n > 0 ? GOOD : ColorScheme.MEDIUM_GRAY_COLOR);
 				t.makeable = n;
 			}
 			t.updateTooltip();
@@ -123,6 +130,7 @@ class PotionGrid extends JPanel
 		final JLabel icon = new JLabel();
 		final JLabel count = new JLabel(" ");
 		int makeable;
+		boolean pie;
 		boolean hover;
 
 		Tile(Potion potion)
@@ -165,7 +173,8 @@ class PotionGrid extends JPanel
 		void updateTooltip()
 		{
 			String line = makeable < 0 ? "Needs " + potion.getLevel() + " Herblore"
-				: "Level " + potion.getLevel() + " &middot; can make " + makeable + " &times; " + potion.potionName();
+				: "Level " + potion.getLevel() + " &middot; can make " + makeable + " &times; " + potion.potionName()
+				+ (pie ? "<br>with a botanical pie (+" + PotionPlan.PIE_BOOST + ")" : "");
 			setToolTipText("<html>" + potion.getName() + "<br>" + line + "</html>");
 		}
 
