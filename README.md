@@ -10,7 +10,7 @@ Pick a potion and your bank shows only what you need to make it, laid out in the
 ## Using it
 
 1. Open the **Potion Prep** panel (green flask icon) and click a potion. Search narrows the grid; Enter picks the first match.
-2. Turn on **Show in bank**. While it's on, your bank opens showing just that potion's ingredients. Turn it off to get your normal bank back.
+2. Turn on **Show in bank**. While it's on and the Potion Prep panel is open, your bank shows just that potion's ingredients. Close the panel, click any other bank tab, or turn the toggle off to get your normal bank back.
 
 Each grid tile shows how many of that potion you can make from your bank and inventory. Red **Lv** means your Herblore level is too low.
 
@@ -45,7 +45,7 @@ Attack, Antipoison, Strength, Restore, Energy, Defence, Agility, Combat, Prayer,
 
 - Needs the core **Bank Tags** plugin, which is on by default.
 - The layout only changes how the bank is drawn. Nothing is moved, clicked or withdrawn for you.
-- Unf potions and vials of water in potion storage are counted once you've opened the Potion Prep view.
+- Potions and unf potions in potion storage are counted each time you open the bank. If you haven't unlocked potion storage, only your bank and inventory are counted.
 - Crushing a lava scale gives 3 to 6 shards. Counts assume 3.
 
 ## Support

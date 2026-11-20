@@ -175,4 +175,27 @@ public class PotionPlanTest
 		assertEquals(0, plan.getMakeable());
 		assertTrue(steps(plan), steps(plan).contains("Needs 78 Herblore"));
 	}
+
+	@Test
+	public void potionStorageCountsAddToBank()
+	{
+		// PotionStorageReader keys storage by the 1-dose id with total doses,
+		// and unf potions by their own id. Bank has 1 super energy(4) = 4 doses.
+		Map<Integer, Integer> c = counts(ItemID._4DOSE2ENERGY, 1, ItemID.AMYLASE, 100);
+		c.merge(ItemID._1DOSE2ENERGY, 37, Integer::sum);   // 37 doses in storage
+		PotionPlan plan = PotionPlan.compute(Potion.STAMINA, c, 99);
+		assertEquals(41, plan.getMakeable());
+
+		Map<Integer, Integer> unf = counts(ItemID.SNAPE_GRASS, 50);
+		unf.merge(ItemID.RANARRVIAL, 12, Integer::sum);       // 12 unf in storage
+		assertEquals(12, PotionPlan.compute(Potion.PRAYER, unf, 99).getMakeable());
+	}
+
+	@Test
+	public void noPotionStorageUnlockFallsBackToBank()
+	{
+		// Without the unlock the reader returns nothing; bank counts alone apply.
+		PotionPlan plan = PotionPlan.compute(Potion.PRAYER, counts(ItemID.RANARRVIAL, 5, ItemID.SNAPE_GRASS, 50), 99);
+		assertEquals(5, plan.getMakeable());
+	}
 }

@@ -267,4 +267,16 @@ class PotionPrepPanel extends PluginPanel
 		p.setAlignmentX(LEFT_ALIGNMENT);
 		return p;
 	}
+
+	@Override
+	public void onActivate()
+	{
+		plugin.setPanelOpen(true);
+	}
+
+	@Override
+	public void onDeactivate()
+	{
+		plugin.setPanelOpen(false);
+	}
 }

@@ -4,6 +4,7 @@ import com.google.inject.Provides;
 import java.awt.image.BufferedImage;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -19,11 +20,15 @@ import net.runelite.api.ScriptID;
 import net.runelite.api.Skill;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.ScriptPostFired;
+import net.runelite.api.events.ScriptPreFired;
 import net.runelite.api.events.StatChanged;
-import net.runelite.api.events.WidgetLoaded;
+import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
@@ -78,7 +83,19 @@ public class PotionPrepPlugin extends Plugin
 	// Last observed bank. Null means "not seen this session", which is different from empty.
 	private Map<Integer, Integer> bankCounts;
 	private long bankObservedAt;
-	private final Map<Integer, Integer> storageCounts = new HashMap<>();
+	// Potion storage, read directly (see PotionStorageReader). Keyed by
+	// 1-dose item id. Kept after the bank closes, like the bank snapshot.
+	private Map<Integer, Integer> storageCounts = new HashMap<>();
+	private boolean readStorage;
+	private Set<Integer> storageVarps;
+	// Dose rows collapsed to one slot because that potion is only in storage.
+	private Set<Integer> collapsed = new HashSet<>();
+
+	// The filter only applies while the panel is open and the toggle is on.
+	private volatile boolean panelOpen;
+	// Our tab has been shown during this bank visit, so a later bank build
+	// without it means the player clicked away.
+	private boolean shownThisVisit;
 	private final Map<Integer, Integer> invCounts = new HashMap<>();
 	private int herbloreLevel;
 
@@ -132,7 +149,8 @@ public class PotionPrepPlugin extends Plugin
 		panel = null;
 		selected = null;
 		bankCounts = null;
-		storageCounts.clear();
+		storageCounts = new HashMap<>();
+		collapsed = new HashSet<>();
 		invCounts.clear();
 	}
 
@@ -152,19 +170,52 @@ public class PotionPrepPlugin extends Plugin
 		configManager.setConfiguration(PotionPrepConfig.GROUP, "showInBank", on);
 		clientThread.invokeLater(() ->
 		{
-			if (on && isBankOpen())
-			{
-				openTag();
-			}
-			else if (!on && TAG.equals(bankTagsService.getActiveTag()))
-			{
-				bankTagsService.closeBankTag();
-			}
+			applyFilter();
 			pushToPanel(null);
 		});
 	}
 
+	/** The panel was shown or hidden in the sidebar. */
+	void setPanelOpen(boolean open)
+	{
+		panelOpen = open;
+		clientThread.invokeLater(this::applyFilter);
+	}
+
 	// --- Client thread ---
+
+	private boolean shouldFilter()
+	{
+		return config.showInBank() && panelOpen && selected != null;
+	}
+
+	/** Open or close our tab to match {@link #shouldFilter()}, if the bank is open. */
+	private void applyFilter()
+	{
+		if (!isBankOpen())
+		{
+			return;
+		}
+		if (shouldFilter())
+		{
+			openTag();
+		}
+		else
+		{
+			closeOurTag();
+		}
+	}
+
+	private void closeOurTag()
+	{
+		if (TAG.equals(bankTagsService.getActiveTag()))
+		{
+			// We are closing it, so the next bank build must not read as
+			// "the player clicked away".
+			shownThisVisit = false;
+			bankTagsService.closeBankTag();
+		}
+	}
 
 	private void select(Potion potion, boolean persist)
 	{
@@ -175,6 +226,7 @@ public class PotionPrepPlugin extends Plugin
 		{
 			configManager.setConfiguration(PotionPrepConfig.GROUP, "potion", potion.name());
 		}
+		collapsed = computeCollapsed();
 		saveLayout();
 		if (TAG.equals(bankTagsService.getActiveTag()) && isBankOpen())
 		{
@@ -194,7 +246,7 @@ public class PotionPrepPlugin extends Plugin
 		Layout layout = new Layout(TAG);
 		for (int row = 0; row < rows.size(); row++)
 		{
-			int[] ids = rows.get(row);
+			int[] ids = collapse(rows.get(row));
 			// Each action row ends at the chosen column and runs leftwards,
 			// or rightwards when there isn't room on the left.
 			int start = Math.max(0, Math.min(col - (ids.length - 1), BANK_COLUMNS - ids.length));
@@ -204,6 +256,65 @@ public class PotionPrepPlugin extends Plugin
 			}
 		}
 		layoutManager.saveLayout(layout);
+	}
+
+	/**
+	 * Bank Tags matches every dose slot of a potion that is only in potion
+	 * storage to the same stored potion, so (1)-(4) would show four copies.
+	 * For those potions keep just the 4-dose slot.
+	 */
+	private int[] collapse(int[] ids)
+	{
+		if (collapsed.isEmpty())
+		{
+			return ids;
+		}
+		return Arrays.stream(ids).filter(id -> !collapsed.contains(id)).toArray();
+	}
+
+	/** 1-3 dose ids of potions in this layout that are in storage but not the bank. */
+	private Set<Integer> computeCollapsed()
+	{
+		Set<Integer> out = new HashSet<>();
+		if (selected == null)
+		{
+			return out;
+		}
+		for (Node n : PotionPlan.ingredients(selected))
+		{
+			if (!n.isDosed() || storageCounts.getOrDefault(n.getDoseIds()[0], 0) <= 0)
+			{
+				continue;
+			}
+			boolean inBank = false;
+			for (int id : n.getDoseIds())
+			{
+				inBank |= bankCounts != null && bankCounts.containsKey(id);
+			}
+			if (!inBank)
+			{
+				for (int d = 0; d < 3; d++)
+				{
+					out.add(n.getDoseIds()[d]);
+				}
+			}
+		}
+		return out;
+	}
+
+	/** Recompute storage-only collapsing; re-save and reopen the layout if it changed. */
+	private void refreshCollapsed()
+	{
+		Set<Integer> now = computeCollapsed();
+		if (!now.equals(collapsed))
+		{
+			collapsed = now;
+			saveLayout();
+			if (TAG.equals(bankTagsService.getActiveTag()) && isBankOpen())
+			{
+				openTag();
+			}
+		}
 	}
 
 	private void openTag()
@@ -219,60 +330,102 @@ public class PotionPrepPlugin extends Plugin
 		return w != null && !w.isHidden();
 	}
 
-	@Subscribe
-	public void onWidgetLoaded(WidgetLoaded event)
+	// Runs after Bank Tags (priority -1), the same hook Inventory Setups uses.
+	@Subscribe(priority = -1)
+	public void onScriptPreFired(ScriptPreFired event)
 	{
-		if (event.getGroupId() == InterfaceID.BANKMAIN && config.showInBank() && selected != null)
+		if (event.getScriptId() != ScriptID.BANKMAIN_INIT)
 		{
-			// Let the bank finish building before switching tab.
-			clientThread.invokeLater(this::openTag);
+			return;
+		}
+		shownThisVisit = false;
+		if (shouldFilter())
+		{
+			openTag();
+		}
+		else if (TAG.equals(bankTagsService.getActiveTag()))
+		{
+			// Bank Tags remembers the last tab; don't come back to ours
+			// unless the filter is on.
+			bankTagsService.closeBankTag();
 		}
 	}
 
 	@Subscribe
 	public void onScriptPostFired(ScriptPostFired event)
 	{
-		if (event.getScriptId() != ScriptID.BANKMAIN_FINISHBUILDING || !TAG.equals(bankTagsService.getActiveTag()))
+		if (event.getScriptId() != ScriptID.BANKMAIN_FINISHBUILDING)
 		{
 			return;
+		}
+		readStorage = true;
+
+		boolean ours = TAG.equals(bankTagsService.getActiveTag());
+		if (ours)
+		{
+			shownThisVisit = true;
+		}
+		else if (shownThisVisit && config.showInBank())
+		{
+			// The player clicked another tab (or Bank Tags' close) while our
+			// view was up: treat that as turning the filter off.
+			shownThisVisit = false;
+			configManager.setConfiguration(PotionPrepConfig.GROUP, "showInBank", false);
+			pushToPanel(null);
+		}
+	}
+
+	@Subscribe
+	public void onVarbitChanged(VarbitChanged event)
+	{
+		int varp = event.getVarpId();
+		if (varp == VarPlayerID.POTIONSTORE_BASE_VAR_1 || varp == VarPlayerID.POTIONSTORE_BASE_VAR_2
+			|| varp == VarPlayerID.POTIONSTORE_BASE_VAR_3 || varp == VarPlayerID.POTIONSTORE_BASE_VAR_4
+			|| varp == VarPlayerID.POTIONSTORE_BASE_VAR_5 || varp == VarPlayerID.POTIONSTORE_BASE_VAR_6
+			|| storageVarps != null && storageVarps.contains(varp))
+		{
+			readStorage = true;
+		}
+	}
+
+	@Subscribe
+	public void onClientTick(ClientTick event)
+	{
+		// Scripts can't run from inside another script, so storage is read
+		// here, on the tick after the bank builds or storage changes.
+		if (!readStorage || !isBankOpen())
+		{
+			return;
+		}
+		readStorage = false;
+
+		if (storageVarps == null)
+		{
+			Widget w = client.getWidget(InterfaceID.Bankmain.POTIONSTORE_ITEMS);
+			int[] trigger = w != null ? w.getVarTransmitTrigger() : null;
+			if (trigger != null)
+			{
+				storageVarps = new HashSet<>();
+				Arrays.stream(trigger).forEach(storageVarps::add);
+			}
 		}
 
-		// Unf potions and vials of water can sit in potion storage, which is
-		// not part of the bank item container. The Bank Tags layout draws
-		// them with their real quantity, so read it back off the widgets.
-		Widget items = client.getWidget(InterfaceID.Bankmain.ITEMS);
-		if (items == null)
+		Map<Integer, Integer> now = PotionStorageReader.read(client);
+		if (!now.equals(storageCounts))
 		{
-			return;
+			storageCounts = now;
+			refreshCollapsed();
+			pushToPanel(null);
 		}
-		Map<Integer, Integer> seen = new HashMap<>();
-		Widget[] children = items.getChildren();
-		if (children != null)
+	}
+
+	@Subscribe
+	public void onWidgetClosed(WidgetClosed event)
+	{
+		if (event.getGroupId() == InterfaceID.BANKMAIN)
 		{
-			for (Widget c : children)
-			{
-				// Layout placeholders (items you don't have) are drawn faded with
-				// quantity Integer.MAX_VALUE, so skip anything faded.
-				if (c == null || c.isHidden() || c.getOpacity() > 0 || c.getItemQuantity() == Integer.MAX_VALUE
-					|| !trackedIds.contains(c.getItemId()))
-				{
-					continue;
-				}
-				seen.merge(c.getItemId(), c.getItemQuantity(), Math::max);
-			}
+			shownThisVisit = false;
 		}
-		// The layout shows the bank quantity when there is one, otherwise the
-		// potion storage quantity. Keep only the storage-only ones so they can
-		// be added to the bank counts without double counting.
-		storageCounts.clear();
-		seen.forEach((id, qty) ->
-		{
-			if (qty > 0 && (bankCounts == null || !bankCounts.containsKey(id)))
-			{
-				storageCounts.put(id, qty);
-			}
-		});
-		pushToPanel(null);
 	}
 
 	@Subscribe
@@ -281,6 +434,7 @@ public class PotionPrepPlugin extends Plugin
 		if (event.getContainerId() == InventoryID.BANK)
 		{
 			readBank(event.getItemContainer());
+			refreshCollapsed();
 			pushToPanel(null);
 		}
 		else if (event.getContainerId() == InventoryID.INV)
@@ -309,7 +463,8 @@ public class PotionPrepPlugin extends Plugin
 			{
 				// Different account may log in next.
 				bankCounts = null;
-				storageCounts.clear();
+				storageCounts = new HashMap<>();
+				collapsed = new HashSet<>();
 				herbloreLevel = 0;
 			}
 			invCounts.clear();
