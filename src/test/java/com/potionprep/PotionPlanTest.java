@@ -119,7 +119,7 @@ public class PotionPlanTest
 		assertFalse(s, s.contains("Crush"));
 		assertTrue(s, s.contains("Clean 533 grimy avantoe"));
 		assertTrue(s, s.contains("Make 643 avantoe (unf)"));
-		assertTrue(s, s.contains("Short 1615 mort myre fungus"));
+		assertTrue(s, s.contains("Short 1,615 mort myre fungus"));
 	}
 
 	@Test

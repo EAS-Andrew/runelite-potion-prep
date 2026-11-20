@@ -6,6 +6,7 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import lombok.Getter;
@@ -231,7 +232,7 @@ public final class PotionPlan
 		run.makeFinal(fin, makeable);
 		for (Map.Entry<Recipe, Integer> e : run.crafts.entrySet())
 		{
-			steps.add(new Step(Severity.ACTION, String.format(e.getKey().getStepFormat(), e.getValue()), null));
+			steps.add(new Step(Severity.ACTION, String.format(Locale.US, e.getKey().getStepFormat().replace("%d", "%,d"), e.getValue()), null));
 		}
 
 		// What stops you making more? Aim for what your best-stocked input
@@ -300,7 +301,8 @@ public final class PotionPlan
 
 	private static String qty(Node n, int amount)
 	{
-		return n.isDosed() ? amount + " doses of " + Catalog.lower(n.getName()) : amount + " " + Catalog.lower(n.getName());
+		String qty = String.format(Locale.US, "%,d", amount);
+		return n.isDosed() ? qty + " doses of " + Catalog.lower(n.getName()) : qty + " " + Catalog.lower(n.getName());
 	}
 
 	private static int maxCrafts(Recipe fin, Map<Node, Integer> base, int lvl, boolean allowCraft, int bound)

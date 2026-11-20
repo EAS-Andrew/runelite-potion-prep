@@ -233,9 +233,10 @@ class PotionPrepPanel extends PluginPanel
 		switch (s)
 		{
 			case WARNING:
+				// Plain ASCII: the RuneScape font has no bullet glyphs.
 				return "! ";
 			default:
-				return "&#9675; ";
+				return "";
 		}
 	}
 
