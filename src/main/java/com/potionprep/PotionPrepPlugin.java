@@ -143,29 +143,24 @@ public class PotionPrepPlugin extends Plugin
 		clientThread.invokeLater(() -> select(potion, true));
 	}
 
-	void showInBank()
+	/**
+	 * The panel's "Show in bank" toggle. While on, every bank opened shows
+	 * the selected potion's layout; turning it off restores the normal bank.
+	 */
+	void setShowInBank(boolean on)
 	{
+		configManager.setConfiguration(PotionPrepConfig.GROUP, "showInBank", on);
 		clientThread.invokeLater(() ->
 		{
-			if (isBankOpen())
+			if (on && isBankOpen())
 			{
 				openTag();
 			}
-			else
-			{
-				pushToPanel("Open your bank first");
-			}
-		});
-	}
-
-	void closeInBank()
-	{
-		clientThread.invokeLater(() ->
-		{
-			if (TAG.equals(bankTagsService.getActiveTag()))
+			else if (!on && TAG.equals(bankTagsService.getActiveTag()))
 			{
 				bankTagsService.closeBankTag();
 			}
+			pushToPanel(null);
 		});
 	}
 
@@ -227,7 +222,7 @@ public class PotionPrepPlugin extends Plugin
 	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded event)
 	{
-		if (event.getGroupId() == InterfaceID.BANKMAIN && config.autoOpen() && selected != null)
+		if (event.getGroupId() == InterfaceID.BANKMAIN && config.showInBank() && selected != null)
 		{
 			// Let the bank finish building before switching tab.
 			clientThread.invokeLater(this::openTag);
@@ -408,7 +403,8 @@ public class PotionPrepPlugin extends Plugin
 			: bankCounts == null ? "Open your bank to scan it"
 			: "Bank seen " + ago(bankObservedAt);
 		PotionPrepPanel p = panel;
-		SwingUtilities.invokeLater(() -> p.update(plan, status, makeable, lvl));
+		boolean showing = config.showInBank();
+		SwingUtilities.invokeLater(() -> p.update(plan, status, makeable, lvl, showing));
 	}
 
 	private static String ago(long at)

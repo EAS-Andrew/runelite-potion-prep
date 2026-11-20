@@ -3,14 +3,13 @@ package com.potionprep;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.GridLayout;
 import java.util.Map;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
-import javax.swing.JButton;
+import javax.swing.JToggleButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
@@ -39,6 +38,7 @@ class PotionPrepPanel extends PluginPanel
 	private final JPanel rowsPanel = new JPanel();
 	private final JPanel stepsPanel = new JPanel();
 	private final JLabel statusLabel = new JLabel();
+	private final JToggleButton showToggle = new JToggleButton("Show in bank");
 
 	PotionPrepPanel(PotionPrepPlugin plugin, ItemManager itemManager)
 	{
@@ -117,18 +117,10 @@ class PotionPrepPanel extends PluginPanel
 		content.add(stretch(summary));
 		content.add(Box.createVerticalStrut(6));
 
-		JPanel buttons = new JPanel(new GridLayout(1, 2, 6, 0));
-		buttons.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		JButton show = new JButton("Show in bank");
-		show.setFocusable(false);
-		show.addActionListener(e -> plugin.showInBank());
-		JButton clear = new JButton("Show all");
-		clear.setToolTipText("Return the bank to its normal view");
-		clear.setFocusable(false);
-		clear.addActionListener(e -> plugin.closeInBank());
-		buttons.add(show);
-		buttons.add(clear);
-		content.add(stretch(buttons));
+		showToggle.setFocusable(false);
+		showToggle.setToolTipText("While on, the bank opens filtered to this potion");
+		showToggle.addActionListener(e -> plugin.setShowInBank(showToggle.isSelected()));
+		content.add(stretch(showToggle));
 		content.add(Box.createVerticalStrut(10));
 
 		content.add(left(heading("Ingredients")));
@@ -150,8 +142,9 @@ class PotionPrepPanel extends PluginPanel
 		add(content, BorderLayout.NORTH);
 	}
 
-	void update(PotionPlan plan, String status, Map<Potion, Integer> makeable, int herbloreLevel)
+	void update(PotionPlan plan, String status, Map<Potion, Integer> makeable, int herbloreLevel, boolean showingInBank)
 	{
+		showToggle.setSelected(showingInBank);
 		grid.setSelected(plan.getPotion());
 		grid.setStats(makeable, herbloreLevel);
 		Potion potion = plan.getPotion();

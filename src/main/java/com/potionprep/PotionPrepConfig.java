@@ -23,14 +23,14 @@ public interface PotionPrepConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "autoOpen",
-		name = "Open on bank",
-		description = "Show the selected potion's ingredients whenever you open the bank.",
-		position = 2
+		keyName = "showInBank",
+		name = "",
+		description = "",
+		hidden = true
 	)
-	default boolean autoOpen()
+	default boolean showInBank()
 	{
-		return true;
+		return false;
 	}
 
 	@ConfigItem(

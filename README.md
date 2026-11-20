@@ -10,7 +10,7 @@ Pick a potion and your bank shows only what you need to make it, laid out in the
 ## Using it
 
 1. Open the **Potion Prep** panel (green flask icon) and click a potion. Search narrows the grid; Enter picks the first match.
-2. Open your bank. It switches to the potion's ingredients automatically, or click **Show in bank**. **Show all** puts the bank back to normal.
+2. Turn on **Show in bank**. While it's on, your bank opens showing just that potion's ingredients. Turn it off to get your normal bank back.
 
 Each grid tile shows how many of that potion you can make from your bank and inventory. Red **Lv** means your Herblore level is too low.
 
@@ -40,7 +40,6 @@ Attack, Antipoison, Strength, Restore, Energy, Defence, Agility, Combat, Prayer,
 ## Settings
 
 - **Bank column:** which column the rows line up to. 8 is the right-most.
-- **Open on bank:** show the selected potion whenever you open the bank.
 
 ## Notes
 
