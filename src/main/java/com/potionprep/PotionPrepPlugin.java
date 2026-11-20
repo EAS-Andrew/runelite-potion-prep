@@ -51,7 +51,7 @@ import net.runelite.client.util.ImageUtil;
 @PluginDescriptor(
 	name = "Potion Prep",
 	description = "Filter the bank to a potion's ingredients and see what you need to clean, crush or gather",
-	tags = {"herblore", "potion", "bank", "herb", "secondary"}
+	tags = {"herblore", "herb", "herbs", "potion", "potions", "pots", "bank", "banktags", "layout", "tab", "unf", "unfinished", "secondary", "secondaries", "grimy", "clean", "crush", "prayer", "stamina", "brew", "antifire", "antivenom", "combat", "skilling", "planner", "calculator", "ironman"}
 )
 @PluginDependency(BankTagsPlugin.class)
 public class PotionPrepPlugin extends Plugin
