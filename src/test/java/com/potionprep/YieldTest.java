@@ -22,4 +22,16 @@ public class YieldTest
 	{
 		assertTrue(Yield.expected(71, 85, 0, 0, false) < Yield.expected(71, 85, 0, 3, false));
 	}
+
+	@Test
+	public void snapeGrassAndLimpwurt()
+	{
+		// Level 99, no secateurs: save chance 196/256 (76.6%), 3 lives with no compost.
+		assertEquals(3 / (1 - 196 / 256.0), Yield.snapeGrass(99, false, 0), 1e-9);
+		assertTrue(Yield.snapeGrass(99, true, 3) > Yield.snapeGrass(99, false, 3));
+		// Limpwurt: 3 + avg of 0..9 at 91+, 3 + avg of 0..1 at 11.
+		assertEquals(3 + 4.5, Yield.limpwurt(99, false), 1e-9);
+		assertEquals(3.5, Yield.limpwurt(11, false), 1e-9);
+		assertEquals(3, Yield.limpwurt(5, false), 1e-9);
+	}
 }

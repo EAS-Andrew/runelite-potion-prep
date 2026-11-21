@@ -37,4 +37,34 @@ final class Yield
 		double survive = diseaseFree ? 1 : Math.pow(1 - DISEASE[tier] / 128.0, 3);
 		return herbs * survive;
 	}
+
+	/** Snape grass chance-to-save at level 1 and 99, out of 256 (OSRS Wiki yield calculator). */
+	static final int SNAPE_LOW = 148;
+	static final int SNAPE_HIGH = 195;
+
+	/**
+	 * Expected snape grass from one allotment. Compost adds lives; magic secateurs
+	 * multiply the chance-to-save constants by 1.1. Disease rates for allotments
+	 * aren't known, so this assumes the crop survives.
+	 */
+	static double snapeGrass(int level, boolean secateurs, int compost)
+	{
+		double m = secateurs ? 1.10 : 1.0;
+		double save = (1 + Math.floor(SNAPE_LOW * m * (99.0 - level) / 98.0 + SNAPE_HIGH * m * (level - 1.0) / 98.0 + 0.5)) / 256.0;
+		save = Math.min(save, 0.99);
+		int tier = Math.max(0, Math.min(3, compost));
+		return (3 + tier) / (1 - save);
+	}
+
+	/**
+	 * Expected limpwurt roots from one flower patch: 3, plus a random 0..n bonus
+	 * where n grows by one every 10 Farming levels from 11 (up to 9 at 91+).
+	 * Magic secateurs improve the bonus by about 10%. Compost does nothing.
+	 */
+	static double limpwurt(int level, boolean secateurs)
+	{
+		int maxBonus = Math.max(0, Math.min(9, (level - 1) / 10));
+		double bonus = maxBonus / 2.0 * (secateurs ? 1.10 : 1.0);
+		return 3 + Math.min(bonus, maxBonus);
+	}
 }

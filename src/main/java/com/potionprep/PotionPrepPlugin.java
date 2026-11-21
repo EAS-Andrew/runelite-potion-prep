@@ -1692,24 +1692,54 @@ public class PotionPrepPlugin extends Plugin
 	private String[] harvestNote(FarmPlan fp, Map<Integer, Integer> counts, int herblore)
 	{
 		int herbs = (int) Math.round(fp.getExpectedHerbs());
-		if (herbs <= 0)
+		int snape = (int) Math.round(fp.getExpectedSnape());
+		int roots = (int) Math.round(fp.getExpectedLimpwurt());
+		if (herbs <= 0 && snape <= 0 && roots <= 0)
 		{
 			return null;
 		}
 		int grimy = fp.getHerb().getGrimyId();
-		String head = "About " + herbs + " grimy " + Catalog.lower(fp.getHerb().getName());
+		List<String> parts = new ArrayList<>();
+		if (herbs > 0)
+		{
+			parts.add(herbs + " grimy " + Catalog.lower(fp.getHerb().getName()));
+		}
+		if (snape > 0)
+		{
+			parts.add(snape + " snape grass");
+		}
+		if (roots > 0)
+		{
+			parts.add(roots + " limpwurt roots");
+		}
+		String head = "About " + String.join(", ", parts);
+
+		Map<Integer, Integer> after = new HashMap<>(counts);
+		after.merge(grimy, herbs, Integer::sum);
+		after.merge(ItemID.SNAPE_GRASS, snape, Integer::sum);
+		after.merge(ItemID.LIMPWURT_ROOT, roots, Integer::sum);
+		Set<Integer> grown = new HashSet<>(Arrays.asList(grimy, ItemID.SNAPE_GRASS, ItemID.LIMPWURT_ROOT));
+		int lvl = herblore > 0 ? herblore : 0;
+
+		// The selected potion if it uses any of it, else the one this run adds the most to.
 		Potion target = null;
-		if (selected != null && PotionPlan.layoutItems(selected).contains(grimy))
+		if (selected != null && !Collections.disjoint(PotionPlan.layoutItems(selected), grown))
 		{
 			target = selected;
 		}
 		else
 		{
+			int bestGain = 0;
 			for (Potion p : Potion.values())
 			{
-				if (PotionPlan.layoutItems(p).contains(grimy) && (herblore <= 0 || p.getLevel() <= herblore)
-					&& (target == null || p.getLevel() > target.getLevel()))
+				if (Collections.disjoint(PotionPlan.layoutItems(p), grown) || herblore > 0 && p.getLevel() > herblore)
 				{
+					continue;
+				}
+				int gain = p.toPotions(PotionPlan.makeable(p, after, lvl)) - p.toPotions(PotionPlan.makeable(p, counts, lvl));
+				if (gain > bestGain || gain == bestGain && gain > 0 && p.getLevel() > target.getLevel())
+				{
+					bestGain = gain;
 					target = p;
 				}
 			}
@@ -1718,9 +1748,6 @@ public class PotionPrepPlugin extends Plugin
 		{
 			return new String[]{head, null};
 		}
-		Map<Integer, Integer> after = new HashMap<>(counts);
-		after.merge(grimy, herbs, Integer::sum);
-		int lvl = herblore > 0 ? herblore : 0;
 		int more = target.toPotions(PotionPlan.makeable(target, after, lvl)) - target.toPotions(PotionPlan.makeable(target, counts, lvl));
 		return new String[]{head, more > 0 ? "+" + more + " " + target.potionName() + " with what you have" : null};
 	}

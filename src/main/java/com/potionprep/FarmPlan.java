@@ -174,6 +174,9 @@ public final class FarmPlan
 	private final HerbSeed herb;
 	/** Grimy herbs expected from this run's plantings, 0 if unknown. */
 	private final double expectedHerbs;
+	/** Snape grass and limpwurt roots expected from the allotments and flower patches planted. */
+	private double expectedSnape;
+	private double expectedLimpwurt;
 
 	/** How many of each item to withdraw (seeds, compost, runes, tablets), for the bank overlay. */
 	private final Map<Integer, Integer> withdraw;
@@ -399,7 +402,26 @@ public final class FarmPlan
 				withdraw.merge(sup.getItemId(), sup.getNeed(), Integer::sum);
 			}
 		}
-		return new FarmPlan(stops, supplies, steps, rows, s.getHerb(), expected, withdraw);
+		FarmPlan plan = new FarmPlan(stops, supplies, steps, rows, s.getHerb(), expected, withdraw);
+		if (acct.getFarming() > 0)
+		{
+			boolean secateurs = owned.test(Farm.MAGIC_SECATEURS) || leprechaun.getOrDefault(Farm.MAGIC_SECATEURS, 0) > 0;
+			int tier = compostTier(compostId, acct);
+			// Only as many plantings as you have seeds for.
+			if (allot)
+			{
+				int seedsHave = counts.getOrDefault(s.getAllotment().getSeedId(), 0) + vault.getOrDefault(s.getAllotment().getSeedId(), 0);
+				int n = Math.min(allotments, seedsHave / Farm.SEEDS_PER_ALLOTMENT);
+				plan.expectedSnape = n * Yield.snapeGrass(acct.getFarming(), secateurs, tier);
+			}
+			if (flowers)
+			{
+				int seedsHave = counts.getOrDefault(s.getFlower().getSeedId(), 0) + vault.getOrDefault(s.getFlower().getSeedId(), 0);
+				int n = Math.min(flowerPatches, seedsHave);
+				plan.expectedLimpwurt = n * Yield.limpwurt(acct.getFarming(), secateurs);
+			}
+		}
+		return plan;
 	}
 
 	/** 0 none, 1 compost, 2 super, 3 ultra. */
