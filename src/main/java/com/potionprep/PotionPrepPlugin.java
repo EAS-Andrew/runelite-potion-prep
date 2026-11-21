@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Item;
+import net.runelite.api.ItemComposition;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.ScriptID;
 import net.runelite.api.Skill;
@@ -103,6 +104,10 @@ public class PotionPrepPlugin extends Plugin
 	private int boostedLevel;
 	// Whether the current layout includes the botanical pie row.
 	private boolean layoutHasPie;
+	private final Set<Integer> wornIds = new HashSet<>();
+	/** Real item ids that have a bank placeholder. */
+	private final Set<Integer> bankPlaceholders = new HashSet<>();
+	private List<int[]> gearRows = new ArrayList<>();
 
 	@Provides
 	PotionPrepConfig provideConfig(ConfigManager configManager)
@@ -243,12 +248,73 @@ public class PotionPrepPlugin extends Plugin
 			configManager.setConfiguration(PotionPrepConfig.GROUP, "potion", potion.name());
 		}
 		collapsed = computeCollapsed();
+		gearRows = gearRows();
+		trackGear();
 		saveLayout();
 		if (TAG.equals(bankTagsService.getActiveTag()) && isBankOpen())
 		{
 			openTag();
 		}
 		pushToPanel(null);
+	}
+
+	private List<int[]> gearRows()
+	{
+		return Gear.rows(
+			id -> bankCounts != null && bankCounts.getOrDefault(id, 0) > 0,
+			id -> wornIds.contains(id) || invCounts.containsKey(id) || bankPlaceholders.contains(id));
+	}
+
+	private void trackGear()
+	{
+		for (int[] row : gearRows)
+		{
+			for (int id : row)
+			{
+				if (id != -1)
+				{
+					trackedIds.add(id);
+				}
+			}
+		}
+	}
+
+	/** Recompute which gear to show; re-save and reopen the layout if it changed. */
+	private void refreshGear()
+	{
+		if (selected == null)
+		{
+			return;
+		}
+		List<int[]> now = gearRows();
+		if (sameRows(now, gearRows))
+		{
+			return;
+		}
+		gearRows = now;
+		trackedIds.removeAll(Gear.allIds());
+		trackGear();
+		saveLayout();
+		if (TAG.equals(bankTagsService.getActiveTag()) && isBankOpen())
+		{
+			openTag();
+		}
+	}
+
+	private static boolean sameRows(List<int[]> a, List<int[]> b)
+	{
+		if (a.size() != b.size())
+		{
+			return false;
+		}
+		for (int i = 0; i < a.size(); i++)
+		{
+			if (!Arrays.equals(a.get(i), b.get(i)))
+			{
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private void saveLayout()
@@ -265,15 +331,33 @@ public class PotionPrepPlugin extends Plugin
 			rows.add(0, PotionPlan.PIE_IDS);
 		}
 		Layout layout = new Layout(TAG);
+		List<boolean[]> occupied = new ArrayList<>();
 		for (int row = 0; row < rows.size(); row++)
 		{
 			int[] ids = collapse(rows.get(row));
 			// Each action row ends at the chosen column and runs leftwards,
 			// or rightwards when there isn't room on the left.
 			int start = Math.max(0, Math.min(col - (ids.length - 1), BANK_COLUMNS - ids.length));
+			boolean[] used = new boolean[BANK_COLUMNS];
 			for (int i = 0; i < ids.length; i++)
 			{
 				layout.setItemAtPos(ids[i], row * BANK_COLUMNS + start + i);
+				used[start + i] = true;
+			}
+			occupied.add(used);
+		}
+		// Herblore gear sits on the left like the equipment tab, below any
+		// rows too wide to leave room for it.
+		int g = Gear.startRow(occupied, gearRows);
+		for (int r = 0; r < gearRows.size(); r++)
+		{
+			for (int c = 0; c < Gear.WIDTH; c++)
+			{
+				int id = gearRows.get(r)[c];
+				if (id != -1)
+				{
+					layout.setItemAtPos(id, (g + r) * BANK_COLUMNS + c);
+				}
 			}
 		}
 		layoutManager.saveLayout(layout);
@@ -456,11 +540,19 @@ public class PotionPrepPlugin extends Plugin
 		{
 			readBank(event.getItemContainer());
 			refreshCollapsed();
+			refreshGear();
 			pushToPanel(null);
+		}
+		else if (event.getContainerId() == InventoryID.WORN)
+		{
+			wornIds.clear();
+			wornIds.addAll(count(event.getItemContainer()).keySet());
+			refreshGear();
 		}
 		else if (event.getContainerId() == InventoryID.INV)
 		{
 			readInventory(event.getItemContainer());
+			refreshGear();
 			pushToPanel(null);
 		}
 	}
@@ -493,6 +585,8 @@ public class PotionPrepPlugin extends Plugin
 				bankCounts = null;
 				storageCounts = new HashMap<>();
 				collapsed = new HashSet<>();
+				wornIds.clear();
+				bankPlaceholders.clear();
 				herbloreLevel = 0;
 				boostedLevel = 0;
 			}
@@ -537,6 +631,18 @@ public class PotionPrepPlugin extends Plugin
 			return;
 		}
 		bankCounts = count(container);
+		bankPlaceholders.clear();
+		for (Item item : container.getItems())
+		{
+			if (item.getId() > 0 && item.getQuantity() == 0)
+			{
+				ItemComposition c = itemManager.getItemComposition(item.getId());
+				if (c.getPlaceholderTemplateId() != -1)
+				{
+					bankPlaceholders.add(c.getPlaceholderId());
+				}
+			}
+		}
 		bankObservedAt = System.currentTimeMillis();
 	}
 
@@ -585,10 +691,13 @@ public class PotionPrepPlugin extends Plugin
 		PotionPlan plan = PotionPlan.compute(selected, counts,
 			PotionPlan.effectiveLevel(selected, herbloreLevel, boosted), PotionPlan.needsPie(selected, herbloreLevel, boosted));
 		Map<Potion, Integer> makeable = new EnumMap<>(Potion.class);
+		Map<Potion, Double> xp = new EnumMap<>(Potion.class);
 		Set<Potion> pie = EnumSet.noneOf(Potion.class);
 		for (Potion p : Potion.values())
 		{
-			makeable.put(p, PotionPlan.makeable(p, counts, PotionPlan.effectiveLevel(p, herbloreLevel, boosted)));
+			int eff = PotionPlan.effectiveLevel(p, herbloreLevel, boosted);
+			makeable.put(p, PotionPlan.makeable(p, counts, eff));
+			xp.put(p, PotionPlan.xp(p, counts, eff));
 			if (PotionPlan.needsPie(p, herbloreLevel, boosted))
 			{
 				pie.add(p);
@@ -600,7 +709,7 @@ public class PotionPrepPlugin extends Plugin
 			: "Bank seen " + ago(bankObservedAt);
 		PotionPrepPanel p = panel;
 		boolean showing = config.showInBank();
-		SwingUtilities.invokeLater(() -> p.update(plan, status, makeable, lvl, pie, showing));
+		SwingUtilities.invokeLater(() -> p.update(plan, status, makeable, xp, lvl, pie, showing));
 	}
 
 	private static String ago(long at)

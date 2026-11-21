@@ -325,10 +325,25 @@ public final class PotionPlan
 	/** Just the "can make" number, for the potion grid. */
 	public static int makeable(Potion potion, Map<Integer, Integer> counts, int herbloreLevel)
 	{
+		return yieldOf(potion, counts, herbloreLevel)[0].intValue();
+	}
+
+	/**
+	 * Herblore XP for making everything you can of this potion, including the
+	 * prep along the way (cleaning herbs, intermediate potions).
+	 */
+	public static double xp(Potion potion, Map<Integer, Integer> counts, int herbloreLevel)
+	{
+		return yieldOf(potion, counts, herbloreLevel)[1].doubleValue();
+	}
+
+	/** {crafts, xp} */
+	private static Number[] yieldOf(Potion potion, Map<Integer, Integer> counts, int herbloreLevel)
+	{
 		Recipe fin = potion.getProduct().getRecipe();
 		if (herbloreLevel > 0 && herbloreLevel < fin.getLevel())
 		{
-			return 0;
+			return new Number[]{0, 0.0};
 		}
 		Map<Node, Integer> base = new IdentityHashMap<>();
 		long sum = 1;
@@ -338,7 +353,15 @@ public final class PotionPlan
 			base.put(n, have);
 			sum += (long) have * 3;
 		}
-		return maxCrafts(fin, base, herbloreLevel, true, (int) Math.min(sum, MAX_UNITS * 3L));
+		int crafts = maxCrafts(fin, base, herbloreLevel, true, (int) Math.min(sum, MAX_UNITS * 3L));
+		Ctx run = new Ctx(base, herbloreLevel, true);
+		run.makeFinal(fin, crafts);
+		double xp = 0;
+		for (Map.Entry<Recipe, Integer> e : run.crafts.entrySet())
+		{
+			xp += e.getKey().getXp() * e.getValue();
+		}
+		return new Number[]{crafts, xp};
 	}
 
 	private static String qty(Node n, int amount)

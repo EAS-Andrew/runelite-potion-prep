@@ -82,7 +82,7 @@ class PotionGrid extends JPanel
 	 * @param boostedLevel current Herblore level, 0 if unknown
 	 * @param pie          potions you can only make with a botanical pie
 	 */
-	void setStats(Map<Potion, Integer> makeable, int boostedLevel, Set<Potion> pie)
+	void setStats(Map<Potion, Integer> makeable, Map<Potion, Double> xp, int boostedLevel, Set<Potion> pie)
 	{
 		for (Tile t : tiles.values())
 		{
@@ -100,6 +100,7 @@ class PotionGrid extends JPanel
 				t.count.setText(QuantityFormatter.quantityToStackSize(n));
 				t.count.setForeground(t.pie ? PIE : n > 0 ? GOOD : ColorScheme.MEDIUM_GRAY_COLOR);
 				t.makeable = n;
+				t.xp = xp.getOrDefault(t.potion, 0.0);
 			}
 			t.updateTooltip();
 		}
@@ -130,6 +131,7 @@ class PotionGrid extends JPanel
 		final JLabel icon = new JLabel();
 		final JLabel count = new JLabel(" ");
 		int makeable;
+		double xp;
 		boolean pie;
 		boolean hover;
 
@@ -172,8 +174,10 @@ class PotionGrid extends JPanel
 
 		void updateTooltip()
 		{
-			String line = makeable < 0 ? "Needs " + potion.getLevel() + " Herblore"
+			String line = makeable < 0 ? "Needs " + potion.getLevel() + " Herblore<br>or "
+				+ (potion.getLevel() - PotionPlan.PIE_BOOST) + " with a botanical pie"
 				: "Level " + potion.getLevel() + " &middot; can make " + makeable + " &times; " + potion.potionName()
+				+ (xp > 0 ? "<br>" + String.format(Locale.US, "%,d", (long) xp) + " xp" : "")
 				+ (pie ? "<br>with a botanical pie (+" + PotionPlan.PIE_BOOST + ")" : "");
 			setToolTipText("<html>" + potion.getName() + "<br>" + line + "</html>");
 		}

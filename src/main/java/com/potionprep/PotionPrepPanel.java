@@ -143,11 +143,11 @@ class PotionPrepPanel extends PluginPanel
 		add(content, BorderLayout.NORTH);
 	}
 
-	void update(PotionPlan plan, String status, Map<Potion, Integer> makeable, int boostedLevel, Set<Potion> pie, boolean showingInBank)
+	void update(PotionPlan plan, String status, Map<Potion, Integer> makeable, Map<Potion, Double> xp, int boostedLevel, Set<Potion> pie, boolean showingInBank)
 	{
 		showToggle.setSelected(showingInBank);
 		grid.setSelected(plan.getPotion());
-		grid.setStats(makeable, boostedLevel, pie);
+		grid.setStats(makeable, xp, boostedLevel, pie);
 		Potion potion = plan.getPotion();
 		int n = potion.toPotions(plan.getMakeable());
 		int now = potion.toPotions(plan.getMakeableNow());

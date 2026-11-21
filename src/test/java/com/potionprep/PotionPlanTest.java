@@ -30,6 +30,17 @@ public class PotionPlanTest
 	}
 
 	@Test
+	public void xpIncludesPrepSteps()
+	{
+		Map<Integer, Integer> c = new java.util.HashMap<>();
+		c.put(ItemID.UNIDENTIFIED_RANARR, 10);
+		c.put(ItemID.VIAL_WATER, 10);
+		c.put(ItemID.SNAPE_GRASS, 10);
+		// 10 x clean (7.5) + 10 x mix (87.5); the unf step gives none.
+		assertEquals(950.0, PotionPlan.xp(Potion.PRAYER, c, 99), 0.001);
+	}
+
+	@Test
 	public void oneRowPerTaskWithInputsButNotOutput()
 	{
 		List<int[]> rows = PotionPlan.layoutRows(Potion.SUPERANTIPOISON);

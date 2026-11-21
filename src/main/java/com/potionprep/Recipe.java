@@ -28,6 +28,8 @@ public final class Recipe
 	private final Node tool;
 	/** Step text; %d is the number of crafts. */
 	private final String stepFormat;
+	/** Herblore XP per craft. */
+	private double xp;
 
 	private Recipe(int level, boolean altForm, int yield, Node tool, String stepFormat, Input... inputs)
 	{
@@ -37,6 +39,13 @@ public final class Recipe
 		this.tool = tool;
 		this.stepFormat = stepFormat;
 		this.inputs = Arrays.asList(inputs);
+	}
+
+	/** Sets the XP per craft. */
+	Recipe xp(double xp)
+	{
+		this.xp = xp;
+		return this;
 	}
 
 	static Input in(Node node, int qty)
