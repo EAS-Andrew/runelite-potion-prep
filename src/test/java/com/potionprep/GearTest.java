@@ -49,4 +49,24 @@ public class GearTest
 		occupied.remove(1);
 		assertEquals(0, Gear.startRow(occupied, gear));
 	}
+
+	@Test
+	public void savedGearUsesEquipmentTabShape()
+	{
+		int[] slots = new int[14];
+		java.util.Arrays.fill(slots, -1);
+		slots[0] = ItemID.GRACEFUL_HOOD;
+		slots[1] = ItemID.GRACEFUL_CAPE;
+		slots[4] = ItemID.GRACEFUL_TOP;
+		slots[7] = ItemID.GRACEFUL_LEGS;
+		slots[9] = ItemID.GRACEFUL_GLOVES;
+		slots[10] = ItemID.GRACEFUL_BOOTS;
+		List<int[]> rows = Gear.fromSlots(slots);
+		assertEquals(5, rows.size());
+		assertArrayEquals(new int[]{-1, ItemID.GRACEFUL_HOOD, -1}, rows.get(0));
+		assertArrayEquals(new int[]{ItemID.GRACEFUL_CAPE, -1, -1}, rows.get(1));
+		assertArrayEquals(new int[]{-1, ItemID.GRACEFUL_TOP, -1}, rows.get(2));
+		assertArrayEquals(new int[]{-1, ItemID.GRACEFUL_LEGS, -1}, rows.get(3));
+		assertArrayEquals(new int[]{ItemID.GRACEFUL_GLOVES, ItemID.GRACEFUL_BOOTS, -1}, rows.get(4));
+	}
 }

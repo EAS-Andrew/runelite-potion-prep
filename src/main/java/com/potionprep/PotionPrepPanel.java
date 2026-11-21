@@ -40,6 +40,11 @@ class PotionPrepPanel extends PluginPanel
 	private final JPanel stepsPanel = new JPanel();
 	private final JLabel statusLabel = new JLabel();
 	private final JToggleButton showToggle = new JToggleButton("Show in bank");
+	private final JToggleButton potionsMode = new JToggleButton("Potions");
+	private final JToggleButton farmMode = new JToggleButton("Herb run");
+	private final FarmView farmView;
+	private final GearButtons potionGear;
+	private final JPanel potionsView;
 
 	PotionPrepPanel(PotionPrepPlugin plugin, ItemManager itemManager)
 	{
@@ -122,6 +127,9 @@ class PotionPrepPanel extends PluginPanel
 		showToggle.setToolTipText("While on, the bank opens filtered to this potion");
 		showToggle.addActionListener(e -> plugin.setShowInBank(showToggle.isSelected()));
 		content.add(stretch(showToggle));
+		content.add(Box.createVerticalStrut(4));
+		potionGear = new GearButtons(plugin, false);
+		content.add(stretch(potionGear));
 		content.add(Box.createVerticalStrut(10));
 
 		content.add(left(heading("Ingredients")));
@@ -140,7 +148,54 @@ class PotionPrepPanel extends PluginPanel
 		statusLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		content.add(left(statusLabel));
 
-		add(content, BorderLayout.NORTH);
+		farmView = new FarmView(plugin, itemManager);
+		potionsView = content;
+
+		JPanel modes = new JPanel(new java.awt.GridLayout(1, 2, 4, 0));
+		modes.setOpaque(false);
+		potionsMode.setFocusable(false);
+		farmMode.setFocusable(false);
+		javax.swing.ButtonGroup group = new javax.swing.ButtonGroup();
+		group.add(potionsMode);
+		group.add(farmMode);
+		potionsMode.setSelected(true);
+		potionsMode.addActionListener(e -> plugin.setFarmMode(false));
+		farmMode.addActionListener(e -> plugin.setFarmMode(true));
+		modes.add(potionsMode);
+		modes.add(farmMode);
+
+		JPanel root = new JPanel();
+		root.setLayout(new BoxLayout(root, BoxLayout.Y_AXIS));
+		root.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		root.add(stretch(modes));
+		root.add(Box.createVerticalStrut(8));
+		root.add(potionsView);
+		root.add(farmView);
+		farmView.setVisible(false);
+		potionsView.setAlignmentX(LEFT_ALIGNMENT);
+		farmView.setAlignmentX(LEFT_ALIGNMENT);
+		add(root, BorderLayout.NORTH);
+	}
+
+	void setRun(String[] rows)
+	{
+		farmView.setRun(rows);
+	}
+
+	void setGearSaved(boolean potions, boolean farm)
+	{
+		potionGear.setSaved(potions);
+		farmView.gearButtons.setSaved(farm);
+	}
+
+	void updateFarm(FarmPlan plan, FarmPlan.Settings settings, String status, boolean showingInBank, boolean farm, String[] harvest,
+		Map<Integer, Integer> seedCounts, int farmingLevel)
+	{
+		potionsMode.setSelected(!farm);
+		farmMode.setSelected(farm);
+		potionsView.setVisible(!farm);
+		farmView.setVisible(farm);
+		farmView.update(plan, settings, status, showingInBank, harvest, seedCounts, farmingLevel);
 	}
 
 	void update(PotionPlan plan, String status, Map<Potion, Integer> makeable, Map<Potion, Double> xp, int boostedLevel, Set<Potion> pie, boolean showingInBank)

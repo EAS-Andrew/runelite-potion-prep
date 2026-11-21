@@ -134,4 +134,53 @@ final class Gear
 			}
 		}
 	}
+
+	/** Equipment slot index (EquipmentInventorySlot) to {row, col} in the equipment-tab shape. */
+	private static final int[][] SLOT_POS = {
+		{0, 1}, // 0 head
+		{1, 0}, // 1 cape
+		{1, 1}, // 2 neck
+		{2, 0}, // 3 weapon
+		{2, 1}, // 4 body
+		{2, 2}, // 5 shield
+		null, // 6 (arms, unused)
+		{3, 1}, // 7 legs
+		null, // 8 (hair, unused)
+		{4, 0}, // 9 gloves
+		{4, 1}, // 10 boots
+		null, // 11 (jaw, unused)
+		{4, 2}, // 12 ring
+		{1, 2}, // 13 ammo
+	};
+
+	/**
+	 * Saved worn gear laid out like the equipment tab.
+	 *
+	 * @param slots item id per equipment slot index, -1 for empty
+	 * @return rows of {@link Gear#WIDTH} ids (-1 = empty), empty rows dropped
+	 */
+	static List<int[]> fromSlots(int[] slots)
+	{
+		int[][] grid = new int[5][WIDTH];
+		for (int[] r : grid)
+		{
+			java.util.Arrays.fill(r, -1);
+		}
+		for (int i = 0; i < slots.length && i < SLOT_POS.length; i++)
+		{
+			if (SLOT_POS[i] != null && slots[i] > 0)
+			{
+				grid[SLOT_POS[i][0]][SLOT_POS[i][1]] = slots[i];
+			}
+		}
+		List<int[]> out = new ArrayList<>();
+		for (int[] r : grid)
+		{
+			if (r[0] != -1 || r[1] != -1 || r[2] != -1)
+			{
+				out.add(r);
+			}
+		}
+		return out;
+	}
 }
