@@ -284,7 +284,11 @@ class FarmView extends JPanel
 					{
 						// "Herb: Pick" is a plot and its status; anything else is the way there.
 						int colon = line.indexOf(": ");
-						boolean plot = colon > 0 && line.indexOf(' ', colon + 2) == -1;
+						boolean plot = false;
+						for (HerbRun.PlotType t : HerbRun.PlotType.values())
+						{
+							plot |= line.startsWith(t.getLabel() + ": ");
+						}
 						JPanel l = new JPanel(new BorderLayout());
 						l.setOpaque(false);
 						JLabel left = new JLabel(plot ? line.substring(0, colon) : wrap(line));

@@ -92,8 +92,6 @@ final class AccountReader
 			.quests(quests)
 			.moryElite(client.getVarbitValue(VarbitID.MORYTANIA_DIARY_ELITE_COMPLETE) == 1)
 			.leprechaun(ToolLeprechaun.read(client::getVarbitValue))
-			.bucketUses(ToolLeprechaun.bucketUses(client::getVarbitValue))
-			.bucketType(ToolLeprechaun.bucketType(client::getVarbitValue))
 			.pouch(ownsPouch ? pouch(client) : new HashMap<>())
 			.staffElements(staffElements(worn))
 			.build();

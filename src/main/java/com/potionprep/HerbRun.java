@@ -108,12 +108,13 @@ public class HerbRun
 	private static final Pattern PLANT = Pattern.compile("You plant .+ in the (herb patch|flower patch|allotment)",
 		Pattern.CASE_INSENSITIVE);
 	// "You treat the herb patch with ultracompost." / "This allotment has already been treated with compost."
+	// / "The herb patch has been treated with supercompost." (Fertile Soil). Before or after planting.
 	private static final Pattern COMPOST = Pattern.compile(
-		"(?:You treat the|This) (herb patch|flower patch|allotment)(?: with| has already been (?:treated|fertilised) with) (?:ultra|super|)compost",
+		"(?:You treat the|This|The) (herb patch|flower patch|allotment)(?: with| has (?:already )?been (?:treated|fertilised) with) (?:ultra|super|)compost",
 		Pattern.CASE_INSENSITIVE);
 
 	private final List<Stop> stops;
-	/** You have compost, so plots also need composting. Turns off if you run out. */
+	/** You have compost (carried or at the leprechaun), so plots also need composting. Turns off if you run out. */
 	private boolean compost;
 	private final long startedAt;
 	private int index;
@@ -202,7 +203,8 @@ public class HerbRun
 	}
 
 	/**
-	 * Whether you're carrying any compost. Running out mid-run stops plots
+	 * Whether you have compost to hand: carried, or stored with the tool
+	 * leprechaun (there's one at every patch). Running out mid-run stops plots
 	 * waiting for it, so the run carries on with planting only.
 	 *
 	 * @return true if anything changed
@@ -407,7 +409,7 @@ public class HerbRun
 		}
 	}
 
-	/** One word for a plot: its next step (Pick, Clear, Cure, Rake, Compost, Plant) or Done. */
+	/** A word or two for a plot: Pick, Clear, Cure, Rake, then what's left of planting and composting, or Done. */
 	static String status(Plot p, boolean compost)
 	{
 		if (p.noSeeds && !p.planted)
@@ -430,11 +432,13 @@ public class HerbRun
 					break;
 			}
 		}
-		if (compost && !p.composted)
+		// Compost and seed go on in either order.
+		boolean needsCompost = compost && !p.composted;
+		if (!p.planted)
 		{
-			return "Compost";
+			return needsCompost ? "Plant + compost" : "Plant";
 		}
-		return p.planted ? "Done" : "Plant";
+		return needsCompost ? "Compost" : "Done";
 	}
 
 	/** What's left at a plot, e.g. "pick, compost, plant ranarr seed". */

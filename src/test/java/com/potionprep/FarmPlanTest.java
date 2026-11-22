@@ -158,6 +158,43 @@ public class FarmPlanTest
 		}
 	}
 
+	@Test
+	public void bucketAtTheLeprechaunIsNotWithdrawnButStillCounts()
+	{
+		Map<Integer, Integer> lep = new HashMap<>();
+		lep.put(ItemID.BOTTOMLESS_COMPOST_BUCKET_FILLED, 1);
+		FarmPlan.Settings s = settings(EnumSet.of(Patch.FALADOR), FlowerSeed.NONE, AllotmentSeed.NONE, Collections.emptyMap());
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.RANARR_SEED, 5);
+		FarmPlan plan = FarmPlan.compute(s, bank, new HashSet<>(), 99, lep, 50, 3);
+		FarmPlan.Supply b = supply(plan, ItemID.BOTTOMLESS_COMPOST_BUCKET_FILLED);
+		assertEquals("Leprechaun", b.getWhere());
+		assertEquals(50, b.getHave());
+		for (int[] row : plan.getLayoutRows())
+		{
+			for (int id : row)
+			{
+				assertTrue(id != ItemID.BOTTOMLESS_COMPOST_BUCKET_FILLED);
+			}
+		}
+		assertFalse(plan.getWithdraw().containsKey(ItemID.BOTTOMLESS_COMPOST_BUCKET_FILLED));
+		// The harvest still counts the ultracompost.
+		FarmPlan none = FarmPlan.compute(s, bank, new HashSet<>(), 99, new HashMap<>(), 0, 0);
+		assertTrue(plan.getExpectedHerbs() > none.getExpectedHerbs());
+	}
+
+	@Test
+	public void leprechaunCompostCutsTheWithdrawCount()
+	{
+		Map<Integer, Integer> lep = new HashMap<>();
+		lep.put(ItemID.BUCKET_ULTRACOMPOST, 3);
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.BUCKET_ULTRACOMPOST, 10);
+		FarmPlan plan = FarmPlan.compute(settings(EnumSet.of(Patch.FALADOR, Patch.CATHERBY, Patch.ARDOUGNE, Patch.MORYTANIA),
+			FlowerSeed.NONE, AllotmentSeed.NONE, Collections.emptyMap()), bank, new HashSet<>(), 99, lep, 0, 0);
+		assertEquals(Integer.valueOf(1), plan.getWithdraw().get(ItemID.BUCKET_ULTRACOMPOST));
+	}
+
 	private static FarmPlan.Stop stop(FarmPlan plan, Patch p)
 	{
 		return plan.getStops().stream().filter(st -> st.getPatch() == p).findFirst().orElse(null);

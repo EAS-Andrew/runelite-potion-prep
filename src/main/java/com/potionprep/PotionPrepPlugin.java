@@ -38,6 +38,7 @@ import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.ItemID;
+import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.widgets.Widget;
@@ -159,6 +160,12 @@ public class PotionPrepPlugin extends Plugin
 	private final Set<net.runelite.api.GameObject> herbPatches = new HashSet<>();
 	/** Tiles of the walk being shown (empty if none). */
 	private List<int[]> walk = Collections.emptyList();
+	/** "Run done in N min" once a run ends itself; cleared on the next run or bank visit. */
+	private String runDone;
+	/** Bottomless bucket uses, loaded per account; null until needed. */
+	private BottomlessBucket bucket;
+	/** Whether the last item used on an object was the bottomless bucket; null if not seen. */
+	private Boolean lastUseWasBucket;
 	private static final Set<Integer> HERB_PATCH_OBJECTS = new HashSet<>(Arrays.asList(
 		ObjectID.FARMING_HERB_PATCH_1, ObjectID.FARMING_HERB_PATCH_2, ObjectID.FARMING_HERB_PATCH_3,
 		ObjectID.FARMING_HERB_PATCH_4, ObjectID.FARMING_HERB_PATCH_5, ObjectID.FARMING_HERB_PATCH_6,
@@ -400,6 +407,7 @@ public class PotionPrepPlugin extends Plugin
 		{
 			FarmPlan plan = computeFarm();
 			run = HerbRun.from(plan, farmSettings(), System.currentTimeMillis());
+			runDone = null;
 			scanHerbPatches();
 			updateRunGuide();
 			pushToPanel(null);
@@ -447,6 +455,18 @@ public class PotionPrepPlugin extends Plugin
 		{
 			return;
 		}
+		guide();
+		if (run != null && run.finished())
+		{
+			// Last patch done: the run stops itself.
+			runDone = "Run done in " + FarmPlan.minutes((System.currentTimeMillis() - run.getStartedAt()) / 1000);
+			endRun();
+			pushToPanel(null);
+		}
+	}
+
+	private void guide()
+	{
 		HerbRun.Stop stop = run.current();
 		net.runelite.api.Player me = client.getLocalPlayer();
 		atStop = stop != null && me != null && PatchPlaces.near(stop.getPoint(), me.getWorldLocation());
@@ -470,7 +490,7 @@ public class PotionPrepPlugin extends Plugin
 				atStop = stop != null && PatchPlaces.near(stop.getPoint(), me.getWorldLocation());
 			}
 		}
-		if (atStop && !hasCompostCarried() && run.setCompostCarried(false))
+		if (atStop && !hasCompost() && run.setCompostCarried(false))
 		{
 			stop = run.current();
 			atStop = stop != null && PatchPlaces.near(stop.getPoint(), me.getWorldLocation());
@@ -518,9 +538,13 @@ public class PotionPrepPlugin extends Plugin
 		scenePath.setOutline(atStop && stop.hasHerb() ? herbPatchNear(stop.getPoint()) : null);
 	}
 
-	/** Compost in your inventory: buckets, or a bottomless bucket with some in it. */
-	private boolean hasCompostCarried()
+	/** Compost to hand: carried, or stored with the tool leprechaun (one at every patch). */
+	private boolean hasCompost()
 	{
+		if (ToolLeprechaun.hasCompost(ToolLeprechaun.read(client::getVarbitValue)))
+		{
+			return true;
+		}
 		if (invCounts.getOrDefault(Farm.BOTTOMLESS_BUCKET, 0) > 0)
 		{
 			return true;
@@ -1049,6 +1073,8 @@ public class PotionPrepPlugin extends Plugin
 			.spiritTrees(spirits)
 			.spiritHouse(config.spiritHouse())
 			.seedVault(seedVault)
+			.bucketUses(Math.max(bucket().getUses(), 0))
+			.bucketType(bucket().getType())
 			.whistleCharges(savedCharges("whistleCharges"))
 			.xericCharges(savedCharges("xericCharges"))
 			.patchStatus(PatchStatus.read(configManager, java.time.Instant.now().getEpochSecond()))
@@ -1142,6 +1168,15 @@ public class PotionPrepPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
+		Widget box = client.getWidget(net.runelite.api.gameval.InterfaceID.Objectbox.TEXT);
+		if (box != null && !box.isHidden() && bucket().onDialog(box.getText()))
+		{
+			saveBucket();
+		}
+		if (bucket != null && bucket.onTick())
+		{
+			saveBucket();
+		}
 		if (run != null)
 		{
 			boolean was = atStop;
@@ -1187,6 +1222,12 @@ public class PotionPrepPlugin extends Plugin
 	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked event)
 	{
+		if (event.getMenuAction() == net.runelite.api.MenuAction.WIDGET_TARGET_ON_GAME_OBJECT)
+		{
+			// Says whose compost the next "You treat..." message was.
+			Widget selected = client.getSelectedWidget();
+			lastUseWasBucket = selected != null && selected.getItemId() == Farm.BOTTOMLESS_BUCKET;
+		}
 		String option = net.runelite.client.util.Text.removeTags(event.getMenuOption()).toLowerCase();
 		String target = net.runelite.client.util.Text.removeTags(event.getMenuTarget()).toLowerCase();
 		if (option.contains("friend"))
@@ -1223,6 +1264,21 @@ public class PotionPrepPlugin extends Plugin
 			updateRunGuide();
 			pushToPanel(null);
 		}
+		Boolean usedBucket = lastUseWasBucket;
+		if (usedBucket == null)
+		{
+			// Not seen: it was the bucket if that's the only compost on you.
+			usedBucket = invCounts.getOrDefault(Farm.BOTTOMLESS_BUCKET, 0) > 0
+				&& Arrays.stream(Farm.COMPOST).noneMatch(id -> invCounts.getOrDefault(id, 0) > 0);
+		}
+		if (BottomlessBucket.TREATED.matcher(msg).find())
+		{
+			lastUseWasBucket = null;
+		}
+		if (bucket().onMessage(msg, usedBucket))
+		{
+			saveBucket();
+		}
 		java.util.regex.Matcher m = WHISTLE.matcher(msg);
 		if (m.find())
 		{
@@ -1240,6 +1296,31 @@ public class PotionPrepPlugin extends Plugin
 	{
 		int n = count.equals("no") ? 0 : count.equals("one") ? 1 : Integer.parseInt(count.replace(",", ""));
 		configManager.setRSProfileConfiguration(PotionPrepConfig.GROUP, key, n);
+		farmDirty = true;
+	}
+
+	/** The bottomless bucket's tracked uses for this account. */
+	private BottomlessBucket bucket()
+	{
+		if (bucket == null)
+		{
+			Integer uses = configManager.getRSProfileConfiguration(PotionPrepConfig.GROUP, "bucketUses", Integer.class);
+			Integer type = configManager.getRSProfileConfiguration(PotionPrepConfig.GROUP, "bucketType", Integer.class);
+			BottomlessBucket b = new BottomlessBucket(uses != null ? uses : -1, type != null ? type : 0);
+			if (configManager.getRSProfileKey() == null)
+			{
+				// No account yet: don't keep a blank one for whoever logs in.
+				return b;
+			}
+			bucket = b;
+		}
+		return bucket;
+	}
+
+	private void saveBucket()
+	{
+		configManager.setRSProfileConfiguration(PotionPrepConfig.GROUP, "bucketUses", bucket.getUses());
+		configManager.setRSProfileConfiguration(PotionPrepConfig.GROUP, "bucketType", bucket.getType());
 		farmDirty = true;
 	}
 
@@ -1402,6 +1483,13 @@ public class PotionPrepPlugin extends Plugin
 			{
 				// Leprechaun or bottomless bucket changed; rebuild once this tick.
 				farmDirty = true;
+				if ((v == VarbitID.FARMING_TOOLS_BOTTOMLESS_BUCKET_TYPE || v == VarbitID.FARMING_TOOLS_BOTTOMLESS_BUCKET_QUANTITY)
+					&& client.getGameState() == GameState.LOGGED_IN
+					&& bucket().onLeprechaun(ToolLeprechaun.storedBucket(client::getVarbitValue),
+						ToolLeprechaun.storedBucketUses(client::getVarbitValue)))
+				{
+					saveBucket();
+				}
 				break;
 			}
 		}
@@ -1487,6 +1575,11 @@ public class PotionPrepPlugin extends Plugin
 		else if (event.getContainerId() == InventoryID.INV)
 		{
 			readInventory(event.getItemContainer());
+			if (bucket().onInventory(invCounts.getOrDefault(ItemID.BOTTOMLESS_COMPOST_BUCKET, 0) > 0,
+				invCounts.getOrDefault(Farm.BOTTOMLESS_BUCKET, 0) > 0))
+			{
+				saveBucket();
+			}
 			relayout();
 			pushToPanel(null);
 		}
@@ -1542,6 +1635,9 @@ public class PotionPrepPlugin extends Plugin
 				fairyRings = null;
 				seedVault = new HashMap<>();
 				ownHouseEntry = null;
+				bucket = null;
+				lastUseWasBucket = null;
+				runDone = null;
 				endRun();
 			}
 			invCounts.clear();
@@ -1581,6 +1677,7 @@ public class PotionPrepPlugin extends Plugin
 
 	private void readBank(ItemContainer container)
 	{
+		runDone = null;
 		if (container == null)
 		{
 			return;
@@ -1661,6 +1758,7 @@ public class PotionPrepPlugin extends Plugin
 		}
 		int lvl = boosted;
 		String status = notice != null ? notice
+			: runDone != null ? runDone
 			: bankCounts == null ? "Open your bank to scan it"
 			: "Bank seen " + ago(bankObservedAt);
 		PotionPrepPanel p = panel;

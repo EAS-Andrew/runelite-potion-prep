@@ -7,8 +7,8 @@ import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.VarbitID;
 
 /**
- * What the player has stored with a tool leprechaun, and the bottomless
- * compost bucket's remaining uses, from the game's varbits.
+ * What the player has stored with a tool leprechaun, from the game's
+ * varbits. These follow the account, so they read the same at any patch.
  */
 final class ToolLeprechaun
 {
@@ -41,19 +41,42 @@ final class ToolLeprechaun
 		out.put(ItemID.BUCKET_COMPOST, varbit.applyAsInt(VarbitID.FARMING_TOOLS_COMPOST) + 256 * varbit.applyAsInt(VarbitID.FARMING_TOOLS_EXTRACOMPOST));
 		out.put(ItemID.BUCKET_SUPERCOMPOST, varbit.applyAsInt(VarbitID.FARMING_TOOLS_SUPERCOMPOST) + 256 * varbit.applyAsInt(VarbitID.FARMING_TOOLS_EXTRASUPERCOMPOST));
 		out.put(ItemID.BUCKET_ULTRACOMPOST, varbit.applyAsInt(VarbitID.FARMING_TOOLS_ULTRACOMPOST));
+		// The bottomless bucket, if stored: 1 empty, 2-4 holding compost.
+		int bucket = storedBucket(varbit);
+		if (bucket >= 2)
+		{
+			out.put(Farm.BOTTOMLESS_BUCKET, 1);
+		}
+		else if (bucket == 1)
+		{
+			out.put(ItemID.BOTTOMLESS_COMPOST_BUCKET, 1);
+		}
 		out.values().removeIf(n -> n <= 0);
 		return out;
 	}
 
-	/** Compost in the bottomless bucket: 1 compost, 2 super, 3 ultra, 0 unknown. */
-	static int bucketType(IntUnaryOperator varbit)
+	/** The stored bottomless bucket: 0 none, 1 empty, 2 compost, 3 super, 4 ultra. */
+	static int storedBucket(IntUnaryOperator varbit)
 	{
 		return varbit.applyAsInt(VarbitID.FARMING_TOOLS_BOTTOMLESS_BUCKET_TYPE);
 	}
 
-	/** Uses left in the bottomless compost bucket (0 if empty or unknown). */
-	static int bucketUses(IntUnaryOperator varbit)
+	/** Uses in the stored bottomless bucket (0 when none is stored). */
+	static int storedBucketUses(IntUnaryOperator varbit)
 	{
 		return varbit.applyAsInt(VarbitID.FARMING_TOOLS_BOTTOMLESS_BUCKET_QUANTITY);
+	}
+
+	/** Compost stored here you can take out at any patch: buckets, or a bucket with some in it. */
+	static boolean hasCompost(Map<Integer, Integer> stored)
+	{
+		for (int id : Farm.COMPOST)
+		{
+			if (stored.getOrDefault(id, 0) > 0)
+			{
+				return true;
+			}
+		}
+		return stored.getOrDefault(Farm.BOTTOMLESS_BUCKET, 0) > 0;
 	}
 }

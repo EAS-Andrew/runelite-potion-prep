@@ -70,17 +70,40 @@ class PathOverlay extends Overlay
 		WorldView wv = client.getTopLevelWorldView();
 		g.setColor(LINE);
 		g.setStroke(new BasicStroke(minimap ? 2 : 3, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-		Point prev = null;
-		for (int[] t : path)
+		// Start under the player as they move, not at the tile they're stepping to,
+		// and draw only the corners so straight runs are one clean line.
+		net.runelite.api.Player me = client.getLocalPlayer();
+		LocalPoint here = me != null ? me.getLocalLocation() : null;
+		java.awt.geom.Path2D.Float line = new java.awt.geom.Path2D.Float();
+		boolean open = false;
+		for (int i = 0; i < path.size(); i++)
 		{
-			LocalPoint lp = LocalPoint.fromScene(t[0], t[1], wv);
-			Point p = minimap ? Perspective.localToMinimap(client, lp) : Perspective.localToCanvas(client, lp, wv.getPlane());
-			if (p != null && prev != null)
+			int[] t = path.get(i);
+			boolean corner = i == 0 || i == path.size() - 1
+				|| t[0] - path.get(i - 1)[0] != path.get(i + 1)[0] - t[0]
+				|| t[1] - path.get(i - 1)[1] != path.get(i + 1)[1] - t[1];
+			if (!corner)
 			{
-				g.drawLine(prev.getX(), prev.getY(), p.getX(), p.getY());
+				continue;
 			}
-			prev = p;
+			LocalPoint lp = i == 0 && here != null ? here : LocalPoint.fromScene(t[0], t[1], wv);
+			Point p = minimap ? Perspective.localToMinimap(client, lp) : Perspective.localToCanvas(client, lp, wv.getPlane());
+			if (p == null)
+			{
+				open = false;
+				continue;
+			}
+			if (open)
+			{
+				line.lineTo(p.getX(), p.getY());
+			}
+			else
+			{
+				line.moveTo(p.getX(), p.getY());
+				open = true;
+			}
 		}
+		g.draw(line);
 		return null;
 	}
 }

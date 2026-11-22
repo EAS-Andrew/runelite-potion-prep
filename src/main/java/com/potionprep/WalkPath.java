@@ -1,16 +1,18 @@
 package com.potionprep;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.PriorityQueue;
 import net.runelite.api.CollisionDataFlag;
 
 /**
  * Shortest walk across the loaded scene, from the game's collision flags:
- * a breadth-first search over 8 directions (every step is one tick), the
- * same moves the game allows. Coordinates are scene tiles.
+ * fewest steps over 8 directions (every step is one tick, the same moves
+ * the game allows), and of those the one with fewest turns. Coordinates
+ * are scene tiles.
  */
 final class WalkPath
 {
@@ -24,6 +26,12 @@ final class WalkPath
 		{CollisionDataFlag.BLOCK_MOVEMENT_SOUTH, 0, CollisionDataFlag.BLOCK_MOVEMENT_NORTH},
 		{CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST, CollisionDataFlag.BLOCK_MOVEMENT_EAST, CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST},
 	};
+
+	private static final int DIRS = 8;
+	private static final int[] DX = {1, -1, 0, 0, 1, 1, -1, -1};
+	private static final int[] DY = {0, 0, 1, -1, 1, -1, 1, -1};
+	/** A step costs far more than a turn, so turns only break ties. */
+	private static final int STEP = 1000;
 
 	private static boolean in(int[][] f, int x, int y)
 	{
@@ -72,47 +80,62 @@ final class WalkPath
 		}
 		int w = f.length;
 		int h = f[0].length;
-		int[] parent = new int[w * h];
-		Arrays.fill(parent, -1);
-		ArrayDeque<Integer> queue = new ArrayDeque<>();
-		int start = sx * h + sy;
-		parent[start] = start;
-		queue.add(start);
+		// Dijkstra over (tile, last direction): fewest steps first, then fewest
+		// turns, so of the many equally short routes the line takes the clean one.
+		int states = w * h * DIRS;
+		int[] cost = new int[states];
+		int[] parent = new int[states];
+		Arrays.fill(cost, Integer.MAX_VALUE);
+		PriorityQueue<int[]> queue = new PriorityQueue<>(Comparator.comparingInt((int[] a) -> a[1]));
+		int startTile = sx * h + sy;
+		// The start has no direction yet: seed it under every one, turn-free.
+		for (int d = 0; d < DIRS; d++)
+		{
+			cost[startTile * DIRS + d] = 0;
+			parent[startTile * DIRS + d] = -1;
+			queue.add(new int[]{startTile * DIRS + d, 0});
+		}
 		while (!queue.isEmpty())
 		{
-			int node = queue.poll();
-			int x = node / h;
-			int y = node % h;
+			int[] head = queue.poll();
+			int state = head[0];
+			if (head[1] != cost[state])
+			{
+				continue;
+			}
+			int tile = state / DIRS;
+			int dir = state % DIRS;
+			int x = tile / h;
+			int y = tile % h;
 			// Beside the area: within one tile of it (or on it, for an open spot).
 			int ddx = x < minX ? minX - x : x > maxX ? x - maxX : 0;
 			int ddy = y < minY ? minY - y : y > maxY ? y - maxY : 0;
 			if (Math.max(ddx, ddy) <= 1)
 			{
 				List<int[]> path = new ArrayList<>();
-				for (int n = node; ; n = parent[n])
+				for (int n = state; n != -1; n = parent[n])
 				{
-					path.add(new int[]{n / h, n % h});
-					if (n == start)
-					{
-						break;
-					}
+					int t = n / DIRS;
+					path.add(new int[]{t / h, t % h});
 				}
 				Collections.reverse(path);
 				return path;
 			}
-			for (int dx = -1; dx <= 1; dx++)
+			for (int d = 0; d < DIRS; d++)
 			{
-				for (int dy = -1; dy <= 1; dy++)
+				int dx = DX[d];
+				int dy = DY[d];
+				if (!canStep(f, x, y, dx, dy))
 				{
-					if ((dx != 0 || dy != 0) && canStep(f, x, y, dx, dy))
-					{
-						int next = (x + dx) * h + (y + dy);
-						if (parent[next] == -1)
-						{
-							parent[next] = node;
-							queue.add(next);
-						}
-					}
+					continue;
+				}
+				int next = ((x + dx) * h + (y + dy)) * DIRS + d;
+				int c = head[1] + STEP + (tile == startTile || d == dir ? 0 : 1);
+				if (c < cost[next])
+				{
+					cost[next] = c;
+					parent[next] = state;
+					queue.add(new int[]{next, c});
 				}
 			}
 		}

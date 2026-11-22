@@ -111,6 +111,26 @@ public class HerbRunTest
 	}
 
 	@Test
+	public void compostGoesOnBeforeOrAfterTheSeed()
+	{
+		HerbRun r = run(true, FlowerSeed.NONE);
+		HerbRun.Plot herb = r.current().getPlots().get(0);
+		assertEquals("Plant + compost", HerbRun.status(herb, r.isCompost()));
+		// Seed first, then compost.
+		r.onMessage("You plant a Ranarr seed in the herb patch.");
+		assertEquals("Compost", HerbRun.status(herb, r.isCompost()));
+		assertEquals(Patch.FALADOR, r.current().getPatch());
+		r.onMessage("You treat the herb patch with ultracompost.");
+		assertEquals(Patch.WEISS, r.current().getPatch());
+		// Compost first (here by Fertile Soil), then seed.
+		herb = r.current().getPlots().get(0);
+		r.onMessage("The herb patch has been treated with supercompost.");
+		assertEquals("Plant", HerbRun.status(herb, r.isCompost()));
+		r.onMessage("You plant a Ranarr seed in the herb patch.");
+		assertTrue(r.finished() || r.current().getPatch() != Patch.WEISS);
+	}
+
+	@Test
 	public void allotmentsOnlyWhileSeedsLast()
 	{
 		FarmPlan.Settings s = FarmPlan.Settings.builder().herb(HerbSeed.RANARR).flower(FlowerSeed.NONE)

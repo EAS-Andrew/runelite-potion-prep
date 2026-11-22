@@ -347,10 +347,21 @@ public final class FarmPlan
 		{
 			supplies.add(new Supply("Magic secateurs", Farm.MAGIC_SECATEURS, 1, 1, "Leprechaun"));
 		}
-		if (compostId != -1)
+		// Compost kept at the leprechaun is taken out at the first patch: nothing to withdraw.
+		Supply compostSupply = null;
+		for (Supply sup : supplies)
+		{
+			if (sup.getItemId() == compostId)
+			{
+				compostSupply = sup;
+			}
+		}
+		if (compostSupply != null && compostSupply.getWhere() == null)
 		{
 			toolRow.add(compostId);
 		}
+		// Yield counts compost only if you have some.
+		int tier = compostSupply != null && compostSupply.getHave() > 0 ? compostTier(compostId, acct) : 0;
 
 		// Runes for the spells on this run.
 		List<Integer> runeRow = runes.supplies(supplies, steps);
@@ -381,7 +392,7 @@ public final class FarmPlan
 		{
 			steps.add(0, new Step(Severity.WARNING, skipped > 0 ? "Nothing ready yet" : "No patches selected", null));
 		}
-		double expected = expectedHerbs(s.getHerb(), planted, acct, compostTier(compostId, acct), owned, leprechaun);
+		double expected = expectedHerbs(s.getHerb(), planted, acct, tier, owned, leprechaun);
 		Map<Integer, Integer> withdraw = new HashMap<>(tabletsNeeded);
 		withdraw.putAll(runes.allocate());
 		Set<Integer> runeIds = new java.util.HashSet<>();
@@ -397,16 +408,21 @@ public final class FarmPlan
 			}
 			// Counted things only: seeds, compost buckets, runes. Tools and the bucket are just "bring it".
 			boolean counted = sup.getNeed() > 1 || sup.getItemId() == s.getHerb().getSeedId();
-			if (counted && sup.getItemId() != Farm.BOTTOMLESS_BUCKET && !"Staff".equals(sup.getWhere()))
+			if (counted && sup.getItemId() != Farm.BOTTOMLESS_BUCKET && !"Staff".equals(sup.getWhere())
+				&& !"Leprechaun".equals(sup.getWhere()))
 			{
-				withdraw.merge(sup.getItemId(), sup.getNeed(), Integer::sum);
+				// Whatever the leprechaun holds is taken out at the patches instead.
+				int need = sup.getNeed() - leprechaun.getOrDefault(sup.getItemId(), 0);
+				if (need > 0)
+				{
+					withdraw.merge(sup.getItemId(), need, Integer::sum);
+				}
 			}
 		}
 		FarmPlan plan = new FarmPlan(stops, supplies, steps, rows, s.getHerb(), expected, withdraw);
 		if (acct.getFarming() > 0)
 		{
 			boolean secateurs = owned.test(Farm.MAGIC_SECATEURS) || leprechaun.getOrDefault(Farm.MAGIC_SECATEURS, 0) > 0;
-			int tier = compostTier(compostId, acct);
 			// Only as many plantings as you have seeds for.
 			if (allot)
 			{
@@ -892,7 +908,7 @@ public final class FarmPlan
 		}
 	}
 
-	/** @return the compost item for the bank layout, or -1 */
+	/** @return the compost this run uses (its supply says if it's at the leprechaun), or -1 */
 	private static int compost(int plots, Map<Integer, Integer> counts, Predicate<Integer> owned,
 		Map<Integer, Integer> leprechaun, int bucketUses, int bucketType, List<Supply> supplies, List<Step> steps,
 		List<Integer> emptyBucket)
@@ -901,14 +917,16 @@ public final class FarmPlan
 		{
 			return -1;
 		}
-		if (owned.test(Farm.BOTTOMLESS_BUCKET))
+		boolean bucketStored = leprechaun.getOrDefault(Farm.BOTTOMLESS_BUCKET, 0) > 0;
+		if (owned.test(Farm.BOTTOMLESS_BUCKET) || bucketStored)
 		{
+			String where = owned.test(Farm.BOTTOMLESS_BUCKET) ? null : "Leprechaun";
 			String name = bucketType == 3 ? "Bottomless (ultracompost)" : bucketType == 2 ? "Bottomless (supercompost)"
 				: bucketType == 1 ? "Bottomless (compost)" : "Bottomless compost bucket";
 			// Uses are read from the game; 0 means not known yet.
 			if (bucketUses > 0)
 			{
-				supplies.add(new Supply(name, Farm.BOTTOMLESS_BUCKET, bucketUses, plots));
+				supplies.add(new Supply(name, Farm.BOTTOMLESS_BUCKET, bucketUses, plots, where));
 				if (bucketUses < plots)
 				{
 					steps.add(new Step(Severity.WARNING, "Bucket has " + bucketUses + " uses, need " + plots, null));
@@ -916,7 +934,7 @@ public final class FarmPlan
 			}
 			else
 			{
-				supplies.add(new Supply(name, Farm.BOTTOMLESS_BUCKET, 1, 1));
+				supplies.add(new Supply(name, Farm.BOTTOMLESS_BUCKET, 1, 1, where));
 			}
 			return Farm.BOTTOMLESS_BUCKET;
 		}
@@ -958,7 +976,7 @@ public final class FarmPlan
 		{
 			steps.add(new Step(Severity.WARNING, "Short " + (plots - total) + " " + lower(name), null));
 		}
-		return inBank || leprechaun.getOrDefault(best, 0) == 0 ? best : -1;
+		return best;
 	}
 
 	private static void addRow(List<int[]> rows, List<Integer> ids)
