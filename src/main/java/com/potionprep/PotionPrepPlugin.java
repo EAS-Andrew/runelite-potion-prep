@@ -1062,10 +1062,11 @@ public class PotionPrepPlugin extends Plugin
 					{
 						detail.append("Follow the path");
 					}
-					else if (st.getTeleport() == null)
+					else if (st.getTeleport() == null || st == teleportedTo)
 					{
+						// No teleport, or already teleported in: it's a walk from here.
 						String dir = direction(st.getPoint());
-						detail.append(dir.isEmpty() ? "Walk" : "Walk " + dir);
+						detail.append(dir.isEmpty() ? "Walk to the patch" : "Walk to the patch, " + dir);
 					}
 					else
 					{
