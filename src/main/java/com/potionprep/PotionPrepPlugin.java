@@ -109,6 +109,8 @@ public class PotionPrepPlugin extends Plugin
 	// without it means the player clicked away.
 	private boolean shownThisVisit;
 	private final Map<Integer, Integer> invCounts = new HashMap<>();
+	/** What's in the seed box; counted as carried while the box is in the inventory. */
+	private Map<Integer, Integer> seedBox = new HashMap<>();
 	private int herbloreLevel;   // real
 	private int boostedLevel;
 	// Whether the current layout includes the botanical pie row.
@@ -143,9 +145,10 @@ public class PotionPrepPlugin extends Plugin
 
 	@Inject private net.runelite.client.ui.overlay.OverlayManager overlayManager;
 	@Inject private WithdrawOverlay withdrawOverlay;
-	/** Where the player was last tick, to spot teleports. */
-	private net.runelite.api.coords.WorldPoint lastPos;
 	@Inject private RunItemOverlay runItemOverlay;
+	@Inject private TeleportOverlay teleportOverlay;
+	/** The option to colour in an open teleport menu, or null. */
+	private String menuOption;
 	private PathOverlay scenePath;
 	private PathOverlay minimapPath;
 	private NavOverlay navOverlay;
@@ -177,6 +180,7 @@ public class PotionPrepPlugin extends Plugin
 	{
 		overlayManager.add(withdrawOverlay);
 		overlayManager.add(runItemOverlay);
+		overlayManager.add(teleportOverlay);
 		scenePath = new PathOverlay(client, false);
 		minimapPath = new PathOverlay(client, true);
 		overlayManager.add(scenePath);
@@ -204,11 +208,15 @@ public class PotionPrepPlugin extends Plugin
 				boostedLevel = client.getBoostedSkillLevel(Skill.HERBLORE);
 				farmingLevel = client.getRealSkillLevel(Skill.FARMING);
 				questsDirty = true;
+				loggedInAs = client.getAccountHash();
 				ItemContainer worn = client.getItemContainer(InventoryID.WORN);
+				wornIds.clear();
 				if (worn != null)
 				{
 					count(worn).keySet().forEach(id -> wornIds.add(itemManager.canonicalize(id)));
 				}
+				ItemContainer box = client.getItemContainer(InventoryID.SEED_BOX);
+				seedBox = box != null ? count(box) : new HashMap<>();
 				readInventory(client.getItemContainer(InventoryID.INV));
 				readBank(client.getItemContainer(InventoryID.BANK));
 			}
@@ -231,17 +239,55 @@ public class PotionPrepPlugin extends Plugin
 		clientToolbar.removeNavigation(navButton);
 		overlayManager.remove(withdrawOverlay);
 		overlayManager.remove(runItemOverlay);
+		overlayManager.remove(teleportOverlay);
 		overlayManager.remove(scenePath);
 		overlayManager.remove(minimapPath);
 		overlayManager.remove(navOverlay);
-		clientThread.invokeLater(this::endRun);
 		panel = null;
-		selected = null;
-		lastLayout = null;
+		// On the client thread, after anything already queued there, so nothing reads these mid-reset.
+		clientThread.invokeLater(() ->
+		{
+			resetAccount();
+			selected = null;
+			lastLayout = null;
+			invCounts.clear();
+			herbPatches.clear();
+		});
+	}
+
+	/**
+	 * Forget everything about the logged-in account: another one may be next
+	 * (logout, or the plugin turned off and back on after switching).
+	 */
+	private void resetAccount()
+	{
 		bankCounts = null;
 		storageCounts = new HashMap<>();
 		collapsed = new HashSet<>();
-		invCounts.clear();
+		wornIds.clear();
+		bankPlaceholders.clear();
+		herbloreLevel = 0;
+		boostedLevel = 0;
+		farmingLevel = 0;
+		quests = null;
+		fairyRings = null;
+		seedVault = new HashMap<>();
+		seedBox = new HashMap<>();
+		ownHouseEntry = null;
+		bucket = null;
+		lastUseWasBucket = null;
+		runDone = null;
+		panelFarmPlan = null;
+		endRun();
+	}
+
+	@Subscribe
+	public void onRuneScapeProfileChanged(net.runelite.client.events.RuneScapeProfileChanged event)
+	{
+		// Per-account saved state (the bucket) is reloaded for the new profile.
+		bucket = null;
+		seedVault = new HashMap<>();
+		farmDirty = true;
 	}
 
 	// --- Called from the panel (EDT) ---
@@ -437,6 +483,8 @@ public class PotionPrepPlugin extends Plugin
 		run = null;
 		atStop = false;
 		runItemOverlay.set(Collections.emptySet());
+		teleportOverlay.set(null);
+		menuOption = null;
 		showPath(null);
 		scenePath.setOutline(Collections.emptyList());
 		navOverlay.set(null);
@@ -454,7 +502,10 @@ public class PotionPrepPlugin extends Plugin
 		if (run != null && run.finished())
 		{
 			// Last patch done: the run stops itself.
-			runDone = "Run done in " + FarmPlan.minutes((System.currentTimeMillis() - run.getStartedAt()) / 1000);
+			runDone = "Run done in " + FarmPlan.minutes((System.currentTimeMillis() - run.getStartedAt()) / 1000)
+				// What you picked now, and roughly what this run's planting will give next time.
+				+ (run.getPicked() > 0 ? ": picked " + run.getPicked() : "")
+				+ (run.getExpected() > 0 ? ", next ~" + Math.round(run.getExpected()) : "");
 			endRun();
 			pushToPanel(null);
 		}
@@ -474,18 +525,19 @@ public class PotionPrepPlugin extends Plugin
 		}
 		if (atStop)
 		{
-			FarmPlan.Settings fs = farmSettings();
+			// The run's own seeds (not the config's, which may have changed), carried loose or in a seed box.
 			Map<HerbRun.PlotType, Integer> seeds = new java.util.EnumMap<>(HerbRun.PlotType.class);
-			seeds.put(HerbRun.PlotType.HERB, invCounts.getOrDefault(fs.getHerb().getSeedId(), 0));
-			seeds.put(HerbRun.PlotType.FLOWER, invCounts.getOrDefault(fs.getFlower().getSeedId(), 0));
-			seeds.put(HerbRun.PlotType.ALLOTMENT, invCounts.getOrDefault(fs.getAllotment().getSeedId(), 0));
+			for (HerbRun.PlotType t : HerbRun.PlotType.values())
+			{
+				seeds.put(t, invCounts.getOrDefault(run.seedId(t), 0));
+			}
 			if (run.setSeedsCarried(seeds))
 			{
 				stop = run.current();
 				atStop = stop != null && PatchPlaces.near(stop.getPoint(), me.getWorldLocation());
 			}
 		}
-		if (atStop && !hasCompost() && run.setCompostCarried(false))
+		if (atStop && run.setCompostCarried(hasCompost()))
 		{
 			stop = run.current();
 			atStop = stop != null && PatchPlaces.near(stop.getPoint(), me.getWorldLocation());
@@ -520,6 +572,20 @@ public class PotionPrepPlugin extends Plugin
 			// Seeds and compost aren't highlighted: you know where they are.
 		}
 		runItemOverlay.set(highlight);
+		// On the way, point at the spell to cast and colour the option to pick in teleport menus.
+		boolean travelling = stop != null && !atStop && stop.getTeleport() != null;
+		String spell = null;
+		if (travelling)
+		{
+			spell = Farm.spellName(stop.getTeleport());
+			if (spell == null && stop.getItemId() == -1 && FarmPlan.entersHouse(stop.getTeleport()))
+			{
+				// No cape or tablet: the run planned Teleport to House.
+				spell = "Teleport to House";
+			}
+		}
+		teleportOverlay.set(spell);
+		menuOption = travelling ? Farm.menuOption(stop.getTeleport(), stop.getPatch()) : null;
 
 		// Once the patch is in the loaded area, draw the walk there on the ground and minimap;
 		// a minimap pin/arrow and a world map marker always point to it.
@@ -534,6 +600,11 @@ public class PotionPrepPlugin extends Plugin
 	/** Compost to hand: carried, or stored with the tool leprechaun (one at every patch). */
 	private boolean hasCompost()
 	{
+		if (run != null && run.isFertileSoil() && client.getVarbitValue(VarbitID.SPELLBOOK) == Farm.LUNAR)
+		{
+			// Composting by spell: still on the Lunar spellbook.
+			return true;
+		}
 		if (ToolLeprechaun.hasCompost(ToolLeprechaun.read(client::getVarbitValue)))
 		{
 			return true;
@@ -569,26 +640,100 @@ public class PotionPrepPlugin extends Plugin
 			{
 				int[][] flags = maps[wv.getPlane()].getFlags();
 				net.runelite.api.GameObject patch = stop.hasHerb() ? herbPatchNear(stop.getPoint()) : null;
+				net.runelite.api.coords.LocalPoint to = patch == null
+					? net.runelite.api.coords.LocalPoint.fromWorld(wv, stop.getPoint()) : null;
+				// The search is only redone when you, the target or the loaded area moves.
+				String key = wv.getBaseX() + "," + wv.getBaseY() + "," + wv.getPlane() + ":" + from.getSceneX() + ","
+					+ from.getSceneY() + ">" + (patch != null ? patch.getSceneMinLocation() + "-" + patch.getSceneMaxLocation()
+					: to != null ? to.getSceneX() + "," + to.getSceneY() : "none");
+				if (key.equals(pathKey))
+				{
+					return;
+				}
+				pathKey = key;
 				if (patch != null)
 				{
 					net.runelite.api.Point min = patch.getSceneMinLocation();
 					net.runelite.api.Point max = patch.getSceneMaxLocation();
 					tiles = WalkPath.find(flags, from.getSceneX(), from.getSceneY(), min.getX(), min.getY(), max.getX(), max.getY());
 				}
-				else
+				else if (to != null)
 				{
-					net.runelite.api.coords.LocalPoint to = net.runelite.api.coords.LocalPoint.fromWorld(wv, stop.getPoint());
-					if (to != null)
-					{
-						tiles = WalkPath.find(flags, from.getSceneX(), from.getSceneY(), to.getSceneX(), to.getSceneY(), 2);
-					}
+					tiles = WalkPath.find(flags, from.getSceneX(), from.getSceneY(), to.getSceneX(), to.getSceneY(), 2);
 				}
 			}
+		}
+		if (stop == null)
+		{
+			pathKey = null;
 		}
 		walk = tiles;
 		scenePath.set(tiles);
 		minimapPath.set(tiles);
 	}
+
+	/** Region of the Farming Guild, where the anima patch's varbit is sent. */
+	private static final int FARMING_GUILD_REGION = 4922;
+
+	/** A run left by logging out, and the account it belongs to. */
+	private HerbRun pausedRun;
+	private long pausedFor = -1;
+	/** Account hash of who's logged in, -1 if not known. */
+	private long loggedInAs = -1;
+
+	/** The plan last shown in the panel's herb run view. */
+	private FarmPlan panelFarmPlan;
+
+	/** Menus teleports open: chat options, the jewellery and talisman list, the portal nexus, the whistle, spirit trees. */
+	private static final int[] TELEPORT_MENUS = {InterfaceID.CHATMENU, InterfaceID.MENU, InterfaceID.MENU_NEW,
+		InterfaceID.TELENEXUS_TELEPORT, InterfaceID.POH_JEWELLERY_BOX, InterfaceID.QUETZALWHISTLE_MENU};
+	private static final int MENU_HIGHLIGHT = 0x00C8FF;
+
+	/** Colour the option the run wants in whichever teleport menu is open (Quest Helper does the same). */
+	private void highlightMenuOption()
+	{
+		String want = menuOption;
+		if (want == null)
+		{
+			return;
+		}
+		for (int group : TELEPORT_MENUS)
+		{
+			net.runelite.api.widgets.Widget root = client.getWidget(group, 0);
+			if (root != null && !root.isHidden())
+			{
+				colourOption(root, want.toLowerCase(java.util.Locale.ROOT), 0);
+			}
+		}
+	}
+
+	private void colourOption(net.runelite.api.widgets.Widget w, String want, int depth)
+	{
+		if (w == null || depth > 6)
+		{
+			return;
+		}
+		String text = w.getText();
+		if (text != null && !text.isEmpty()
+			&& net.runelite.client.util.Text.removeTags(text).toLowerCase(java.util.Locale.ROOT).contains(want))
+		{
+			w.setTextColor(MENU_HIGHLIGHT);
+		}
+		for (net.runelite.api.widgets.Widget[] kids : new net.runelite.api.widgets.Widget[][]{
+			w.getStaticChildren(), w.getDynamicChildren(), w.getNestedChildren()})
+		{
+			if (kids != null)
+			{
+				for (net.runelite.api.widgets.Widget k : kids)
+				{
+					colourOption(k, want, depth + 1);
+				}
+			}
+		}
+	}
+
+	/** What the drawn path was found for, so it isn't searched again every tick. */
+	private String pathKey;
 
 	/** Herb patches already loaded (spawn events only cover ones loaded later). */
 	private void scanHerbPatches()
@@ -624,6 +769,8 @@ public class PotionPrepPlugin extends Plugin
 
 	/** What each object's own definition names it as a patch, or null (definitions don't change). */
 	private final Map<Integer, java.util.Optional<HerbRun.PlotType>> patchIds = new HashMap<>();
+	/** Objects that can't be a patch (no impostors, not named like one). */
+	private final Set<Integer> notPatches = new HashSet<>();
 
 	private static HerbRun.PlotType patchName(String name)
 	{
@@ -655,9 +802,19 @@ public class PotionPrepPlugin extends Plugin
 		{
 			return HerbRun.PlotType.HERB;
 		}
+		if (notPatches.contains(id))
+		{
+			return null;
+		}
 		net.runelite.api.ObjectComposition def = client.getObjectDefinition(id);
 		if (def == null)
 		{
+			return null;
+		}
+		if (def.getImpostorIds() == null && patchName(def.getName()) == null)
+		{
+			// Most objects: a plain name that isn't a patch, never worth a second look.
+			notPatches.add(id);
 			return null;
 		}
 		HerbRun.PlotType own = patchIds.computeIfAbsent(id, i -> java.util.Optional.ofNullable(patchName(def.getName())))
@@ -744,8 +901,10 @@ public class PotionPrepPlugin extends Plugin
 	private String direction(net.runelite.api.coords.WorldPoint to)
 	{
 		net.runelite.api.Player me = client.getLocalPlayer();
-		if (me == null || to == null)
+		net.runelite.api.WorldView wv = client.getTopLevelWorldView();
+		if (me == null || to == null || wv == null || wv.isInstance())
 		{
+			// An instance's coordinates (e.g. your house) aren't the real world's.
 			return "";
 		}
 		int dx = to.getX() - me.getWorldLocation().getX();
@@ -783,7 +942,8 @@ public class PotionPrepPlugin extends Plugin
 					}
 					else if (st.getTeleport() == null)
 					{
-						detail.append("Walk " + direction(st.getPoint()));
+						String dir = direction(st.getPoint());
+						detail.append(dir.isEmpty() ? "Walk" : "Walk " + dir);
 					}
 					else
 					{
@@ -793,10 +953,14 @@ public class PotionPrepPlugin extends Plugin
 				}
 				else
 				{
+					// Dead crops can be brought back with Resurrect Crops (Arceuus, 78 Magic).
+					boolean resurrect = client.getVarbitValue(VarbitID.SPELLBOOK) == Farm.ARCEUUS
+						&& client.getBoostedSkillLevel(Skill.MAGIC) >= 78;
 					for (HerbRun.Plot p : st.getPlots())
 					{
+						String status = HerbRun.status(p, run.isCompost());
 						detail.append(detail.length() > 0 ? ";" : "").append(p.getType().getLabel()).append(": ")
-							.append(HerbRun.status(p, run.isCompost()));
+							.append(resurrect && status.equals("Clear") ? "Clear or resurrect" : status);
 					}
 				}
 			}
@@ -900,9 +1064,11 @@ public class PotionPrepPlugin extends Plugin
 		else
 		{
 			withdrawOverlay.set(false, Collections.emptyMap(), Collections.emptyMap());
-			trackedIds.addAll(PotionPlan.layoutItems(selected));
+			// What you hold shapes the layout: a Herblore cape skips cleaning, held dust skips crushing.
+			Map<Integer, Integer> held = combinedCounts();
+			trackedIds.addAll(PotionPlan.layoutItems(selected, held));
 			layoutHasPie = pieNeeded();
-			rows = new ArrayList<>(PotionPlan.layoutRows(selected));
+			rows = new ArrayList<>(PotionPlan.layoutRows(selected, held));
 			if (layoutHasPie)
 			{
 				// Eating the pie is the first task.
@@ -913,7 +1079,12 @@ public class PotionPrepPlugin extends Plugin
 			List<int[]> shown = new ArrayList<>();
 			for (int[] row : rows)
 			{
-				shown.add(collapse(row));
+				int[] c = collapse(row);
+				// A decant row of storage-only potions can collapse to nothing: no blank bank row.
+				if (c.length > 0)
+				{
+					shown.add(c);
+				}
 			}
 			rows = shown;
 			int[] saved = savedGear(false);
@@ -1115,6 +1286,10 @@ public class PotionPrepPlugin extends Plugin
 		{
 			spirits.add("GUILD");
 		}
+		if (config.spiritPortSarim())
+		{
+			spirits.add("PORT_SARIM");
+		}
 		if (config.spiritHosidius())
 		{
 			spirits.add("HOSIDIUS");
@@ -1125,10 +1300,13 @@ public class PotionPrepPlugin extends Plugin
 			.seedVault(seedVault)
 			.bucketUses(Math.max(bucket().getUses(), 0))
 			.bucketType(bucket().getType())
+			.cloakUses(cloakUsesToday())
+			.attas(Boolean.TRUE.equals(configManager.getRSProfileConfiguration(PotionPrepConfig.GROUP, "attas", Boolean.class)))
 			.whistleCharges(savedCharges("whistleCharges"))
 			.xericCharges(savedCharges("xericCharges"))
 			.patchStatus(PatchStatus.read(configManager, java.time.Instant.now().getEpochSecond()))
 			.skipGrowing(config.skipGrowing())
+			.saveRunes(config.saveRunes())
 			.now(java.time.Instant.now().getEpochSecond())
 			.build();
 	}
@@ -1296,6 +1474,9 @@ public class PotionPrepPlugin extends Plugin
 
 	private static final String COUNT = "(no|one|[\\d,]+)";
 	/** Sent on Check and after every flight. */
+	/** "You have used 2 of your 3 Ardougne Farm teleports for today." (wording per Farm Run Autopilot). */
+	private static final java.util.regex.Pattern DAILY_USES = java.util.regex.Pattern.compile(
+		"You have used (\\d+) of your (\\d+) (.+) teleports for today");
 	private static final java.util.regex.Pattern WHISTLE = java.util.regex.Pattern.compile(
 		"Your quetzal whistle has " + COUNT + " charges? remaining\\.");
 	private static final java.util.regex.Pattern TALISMAN = java.util.regex.Pattern.compile(
@@ -1330,7 +1511,20 @@ public class PotionPrepPlugin extends Plugin
 		{
 			saveBucket();
 		}
-		java.util.regex.Matcher m = WHISTLE.matcher(msg);
+		java.util.regex.Matcher m = DAILY_USES.matcher(msg);
+		if (m.find())
+		{
+			String what = m.group(3).toLowerCase(java.util.Locale.ROOT);
+			// The cloak's varbit only keeps one bit of the count, so its uses come from here.
+			if (what.contains("farm") || what.contains("ardougne"))
+			{
+				configManager.setRSProfileConfiguration(PotionPrepConfig.GROUP, "cloakUses",
+					java.time.LocalDate.now(java.time.ZoneOffset.UTC) + ":" + m.group(1));
+				farmDirty = true;
+			}
+			return;
+		}
+		m = WHISTLE.matcher(msg);
 		if (m.find())
 		{
 			saveCharges("whistleCharges", m.group(1));
@@ -1373,6 +1567,25 @@ public class PotionPrepPlugin extends Plugin
 		configManager.setRSProfileConfiguration(PotionPrepConfig.GROUP, "bucketUses", bucket.getUses());
 		configManager.setRSProfileConfiguration(PotionPrepConfig.GROUP, "bucketType", bucket.getType());
 		farmDirty = true;
+	}
+
+	/** Ardougne cloak farm teleports used today (UTC, when the game resets them), from chat. */
+	private int cloakUsesToday()
+	{
+		String v = configManager.getRSProfileConfiguration(PotionPrepConfig.GROUP, "cloakUses");
+		String today = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString();
+		if (v == null || !v.startsWith(today + ":"))
+		{
+			return 0;
+		}
+		try
+		{
+			return Integer.parseInt(v.substring(today.length() + 1));
+		}
+		catch (NumberFormatException e)
+		{
+			return 0;
+		}
 	}
 
 	/** Charges last reported for an item, -1 if never seen. */
@@ -1438,7 +1651,40 @@ public class PotionPrepPlugin extends Plugin
 			}
 		}
 		return FarmPlan.Settings.builder().herb(herb).flower(flower).allotment(allotment)
-			.patches(patches).overrides(overrides).build();
+			.patches(patches).overrides(overrides).order(patchOrder()).build();
+	}
+
+	/** The saved run order, with any patch it doesn't mention added in the default order. */
+	List<Farm.Patch> patchOrder()
+	{
+		List<Farm.Patch> order = new ArrayList<>();
+		for (String name : config.farmOrder().split(","))
+		{
+			Farm.Patch p = parseEnum(Farm.Patch.class, name, null);
+			if (p != null && !order.contains(p))
+			{
+				order.add(p);
+			}
+		}
+		for (Farm.Patch p : Farm.Patch.values())
+		{
+			if (!order.contains(p))
+			{
+				order.add(p);
+			}
+		}
+		return order;
+	}
+
+	/** From the panel (EDT): the player dragged the patches into a new order. */
+	void setPatchOrder(List<Farm.Patch> order)
+	{
+		StringBuilder sb = new StringBuilder();
+		for (Farm.Patch p : order)
+		{
+			sb.append(sb.length() > 0 ? "," : "").append(p.name());
+		}
+		setFarmSetting("farmOrder", sb.toString());
 	}
 
 	private static <E extends Enum<E>> E parseEnum(Class<E> type, String name, E fallback)
@@ -1520,6 +1766,17 @@ public class PotionPrepPlugin extends Plugin
 	@Subscribe
 	public void onVarbitChanged(VarbitChanged event)
 	{
+		if (event.getVarbitId() == VarbitID.FARMING_TRANSMIT_M)
+		{
+			// The anima patch, only meaningful in the Farming Guild: 8-16 is attas (Time Tracking's ANIMA).
+			net.runelite.api.Player me = client.getLocalPlayer();
+			if (me != null && me.getWorldLocation().getRegionID() == FARMING_GUILD_REGION)
+			{
+				int v = event.getValue();
+				configManager.setRSProfileConfiguration(PotionPrepConfig.GROUP, "attas", v >= 8 && v <= 16);
+				farmDirty = true;
+			}
+		}
 		int varp = event.getVarpId();
 		if (varp == VarPlayerID.POTIONSTORE_BASE_VAR_1 || varp == VarPlayerID.POTIONSTORE_BASE_VAR_2
 			|| varp == VarPlayerID.POTIONSTORE_BASE_VAR_3 || varp == VarPlayerID.POTIONSTORE_BASE_VAR_4
@@ -1549,6 +1806,7 @@ public class PotionPrepPlugin extends Plugin
 	@Subscribe
 	public void onClientTick(ClientTick event)
 	{
+		highlightMenuOption();
 		if (questsDirty && client.getGameState() == GameState.LOGGED_IN)
 		{
 			questsDirty = false;
@@ -1618,6 +1876,13 @@ public class PotionPrepPlugin extends Plugin
 			relayout();
 			pushToPanel(null);
 		}
+		else if (event.getContainerId() == InventoryID.SEED_BOX)
+		{
+			seedBox = count(event.getItemContainer());
+			readInventory(client.getItemContainer(InventoryID.INV));
+			relayout();
+			pushToPanel(null);
+		}
 		else if (event.getContainerId() == InventoryID.SEED_VAULT)
 		{
 			seedVault = count(event.getItemContainer());
@@ -1668,36 +1933,36 @@ public class PotionPrepPlugin extends Plugin
 			inHouse = false;
 			housePortals.clear();
 			herbPatches.clear();
+			pathKey = null;
+			walk = Collections.emptyList();
+			scenePath.set(walk);
+			minimapPath.set(walk);
 		}
 		if (event.getGameState() == GameState.LOGIN_SCREEN || event.getGameState() == GameState.HOPPING)
 		{
 			if (event.getGameState() == GameState.LOGIN_SCREEN)
 			{
-				// Different account may log in next.
-				bankCounts = null;
-				storageCounts = new HashMap<>();
-				collapsed = new HashSet<>();
-				wornIds.clear();
-				bankPlaceholders.clear();
-				herbloreLevel = 0;
-				boostedLevel = 0;
-				farmingLevel = 0;
-				quests = null;
-				fairyRings = null;
-				seedVault = new HashMap<>();
-				ownHouseEntry = null;
-				bucket = null;
-				lastUseWasBucket = null;
-				runDone = null;
-				endRun();
+				// Different account may log in next. A run in progress is kept for this
+				// account, so a disconnect or quick relog carries on where it was.
+				pausedRun = run;
+				pausedFor = loggedInAs;
+				resetAccount();
+				// Hopping keeps your inventory, so only a logout forgets it.
+				invCounts.clear();
 			}
-			invCounts.clear();
 			pushToPanel(null);
 		}
 		else if (event.getGameState() == GameState.LOGGED_IN && herbloreLevel == 0)
 		{
 			clientThread.invokeLater(() ->
 			{
+				loggedInAs = client.getAccountHash();
+				if (pausedRun != null && pausedFor == loggedInAs && loggedInAs != -1)
+				{
+					run = pausedRun;
+					scanHerbPatches();
+				}
+				pausedRun = null;
 				herbloreLevel = client.getRealSkillLevel(Skill.HERBLORE);
 				boostedLevel = client.getBoostedSkillLevel(Skill.HERBLORE);
 				farmingLevel = client.getRealSkillLevel(Skill.FARMING);
@@ -1715,7 +1980,8 @@ public class PotionPrepPlugin extends Plugin
 		if ("timetracking".equals(event.getGroup())
 			|| PotionPrepConfig.GROUP.equals(event.getGroup()) && event.getKey() != null
 			&& (event.getKey().startsWith("portal_") || event.getKey().startsWith("spirit")
-			|| "scanHouse".equals(event.getKey()) || "skipGrowing".equals(event.getKey())))
+			|| "scanHouse".equals(event.getKey()) || "skipGrowing".equals(event.getKey())
+			|| "saveRunes".equals(event.getKey())))
 		{
 			// Travel settings: rebuild on the next tick.
 			farmDirty = true;
@@ -1757,6 +2023,10 @@ public class PotionPrepPlugin extends Plugin
 			// Noted items (e.g. noted compost) count as the item itself.
 			count(container).forEach((id, n) -> invCounts.merge(itemManager.canonicalize(id), n, Integer::sum));
 		}
+		if (invCounts.containsKey(ItemID.SEED_BOX) || invCounts.containsKey(ItemID.SEED_BOX_OPEN))
+		{
+			seedBox.forEach((id, n) -> invCounts.merge(id, n, Integer::sum));
+		}
 	}
 
 	private static Map<Integer, Integer> count(ItemContainer container)
@@ -1781,6 +2051,14 @@ public class PotionPrepPlugin extends Plugin
 		}
 		storageCounts.forEach((id, qty) -> all.merge(id, qty, Integer::sum));
 		invCounts.forEach((id, qty) -> all.merge(id, qty, Integer::sum));
+		// A worn Herblore cape counts as held: it changes how potions are made.
+		for (int id : PotionPlan.CAPE_IDS)
+		{
+			if (wornIds.contains(id))
+			{
+				all.merge(id, 1, Integer::sum);
+			}
+		}
 		return all;
 	}
 
@@ -1816,7 +2094,10 @@ public class PotionPrepPlugin extends Plugin
 		boolean showing = config.showInBank();
 		boolean farm = farmMode();
 		FarmPlan.Settings fs = farmSettings();
-		FarmPlan fp = FarmPlan.compute(fs, counts, wornIds, account());
+		// The herb run's plan is hidden in potion mode: reuse the last one rather than
+		// replanning on every potion made.
+		FarmPlan fp = farm || panelFarmPlan == null ? FarmPlan.compute(fs, counts, wornIds, account()) : panelFarmPlan;
+		panelFarmPlan = fp;
 		String[] harvest = harvestNote(fp, counts, boosted);
 		String[] rows = runRows();
 		boolean potionsGear = savedGear(false) != null;

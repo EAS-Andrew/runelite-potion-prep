@@ -68,6 +68,11 @@ class NavOverlay extends Overlay
 		{
 			return null;
 		}
+		if (client.getTopLevelWorldView().isInstance())
+		{
+			// Instances (your house, for one) use their own coordinates: no arrow there.
+			return null;
+		}
 		WorldPoint me = client.getLocalPlayer().getWorldLocation();
 		double dx = dest.getX() - me.getX();
 		double dy = dest.getY() - me.getY();

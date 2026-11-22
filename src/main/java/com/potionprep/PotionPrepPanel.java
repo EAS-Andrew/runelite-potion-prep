@@ -204,13 +204,15 @@ class PotionPrepPanel extends PluginPanel
 		grid.setSelected(plan.getPotion());
 		grid.setStats(makeable, xp, boostedLevel, pie);
 		Potion potion = plan.getPotion();
-		int n = potion.toPotions(plan.getMakeable());
-		int now = potion.toPotions(plan.getMakeableNow());
-		selectedLabel.setText(potion.potionName());
+		// Counts are whole potions; made-a-dose-at-a-time potions keep their base's dose.
+		int n = plan.getMakeable();
+		int now = plan.getMakeableNow();
+		// Long names (Prayer regeneration potion) wrap rather than push the count off.
+		selectedLabel.setText("<html><body style='width:120px'>" + plan.getLabel() + "</body></html>");
 		selectedLabel.setToolTipText("Level " + potion.getLevel());
 		makeableLabel.setText(QuantityFormatter.formatNumber(n));
 		makeableLabel.setForeground(n > 0 ? GOOD : BAD);
-		makeableLabel.setToolTipText("Potions you can make");
+		makeableLabel.setToolTipText(plan.getDoseMix() != null ? "<html>Potions you can make<br>" + plan.getDoseMix() + "</html>" : "Potions you can make");
 		makeableSub.setText(n == 0 ? "None makeable"
 			: now == n ? "All ready"
 			: QuantityFormatter.formatNumber(now) + " ready &middot; +" + QuantityFormatter.formatNumber(n - now) + " after prep");

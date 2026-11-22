@@ -41,6 +41,7 @@ final class ToolLeprechaun
 		out.put(ItemID.BUCKET_COMPOST, varbit.applyAsInt(VarbitID.FARMING_TOOLS_COMPOST) + 256 * varbit.applyAsInt(VarbitID.FARMING_TOOLS_EXTRACOMPOST));
 		out.put(ItemID.BUCKET_SUPERCOMPOST, varbit.applyAsInt(VarbitID.FARMING_TOOLS_SUPERCOMPOST) + 256 * varbit.applyAsInt(VarbitID.FARMING_TOOLS_EXTRASUPERCOMPOST));
 		out.put(ItemID.BUCKET_ULTRACOMPOST, varbit.applyAsInt(VarbitID.FARMING_TOOLS_ULTRACOMPOST));
+		out.put(ItemID.PLANT_CURE, varbit.applyAsInt(VarbitID.FARMING_TOOLS_PLANTCURE));
 		// The bottomless bucket, if stored: 1 empty, 2-4 holding compost.
 		int bucket = storedBucket(varbit);
 		if (bucket >= 2)

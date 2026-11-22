@@ -35,6 +35,7 @@ final class Farm
 		AVANTOE("Avantoe", ItemID.AVANTOE_SEED, 50, 50, ItemID.UNIDENTIFIED_AVANTOE),
 		KWUARM("Kwuarm", ItemID.KWUARM_SEED, 56, 54, ItemID.UNIDENTIFIED_KWUARM),
 		SNAPDRAGON("Snapdragon", ItemID.SNAPDRAGON_SEED, 62, 57, ItemID.UNIDENTIFIED_SNAPDRAGON),
+		HUASCA("Huasca", ItemID.HUASCA_SEED, 65, 58, ItemID.UNIDENTIFIED_HUASCA),
 		CADANTINE("Cadantine", ItemID.CADANTINE_SEED, 67, 60, ItemID.UNIDENTIFIED_CADANTINE),
 		LANTADYME("Lantadyme", ItemID.LANTADYME_SEED, 73, 64, ItemID.UNIDENTIFIED_LANTADYME),
 		DWARF_WEED("Dwarf weed", ItemID.DWARF_WEED_SEED, 79, 67, ItemID.UNIDENTIFIED_DWARF_WEED),
@@ -200,6 +201,9 @@ final class Farm
 			ItemID.TRAIL_AMULET_OF_GLORY_1, ItemID.TRAIL_AMULET_OF_GLORY_2, ItemID.TRAIL_AMULET_OF_GLORY_3,
 			ItemID.TRAIL_AMULET_OF_GLORY_4, ItemID.TRAIL_AMULET_OF_GLORY_5, ItemID.TRAIL_AMULET_OF_GLORY_6),
 		ECTOPHIAL("Ectophial", ItemID.ECTOPHIAL),
+		// Legs 1-3 teleport 2 or 5 times a day, legs 4 without limit (Wiki: Morytania Diary).
+		MORYTANIA_LEGS("Morytania legs", ItemID.MORYTANIA_LEGS_ELITE, ItemID.MORYTANIA_LEGS_HARD,
+			ItemID.MORYTANIA_LEGS_MEDIUM, ItemID.MORYTANIA_LEGS_EASY),
 		FENKENSTRAIN_TAB("Fenkenstrain's Castle teleport", ItemID.TELETAB_FENK),
 		STONY_BASALT("Stony basalt", ItemID.STRONGHOLD_TELEPORT_BASALT),
 		TROLLHEIM_TAB("Trollheim teleport", ItemID.NZONE_TELETAB_TROLLHEIM),
@@ -240,11 +244,15 @@ final class Farm
 
 		// Spirit trees you've grown; reached from any spirit tree (or the one in your house).
 		SPIRIT_GUILD("Spirit tree (Farming Guild)", Kind.SPIRIT, "GUILD"),
-		SPIRIT_HOSIDIUS("Spirit tree (Hosidius)", Kind.SPIRIT, "HOSIDIUS");
+		SPIRIT_HOSIDIUS("Spirit tree (Hosidius)", Kind.SPIRIT, "HOSIDIUS"),
+		SPIRIT_PORT_SARIM("Spirit tree (Port Sarim)", Kind.SPIRIT, "PORT_SARIM"),
+
+		// Grouping (minigame) teleport: free, once every 20 minutes, after visiting Tithe Farm once.
+		TITHE_FARM("Tithe Farm (Grouping)", Kind.MINIGAME, null);
 
 		enum Kind
 		{
-			ITEM, SPELL, FAIRY, HOUSE, PORTAL, SPIRIT
+			ITEM, SPELL, FAIRY, HOUSE, PORTAL, SPIRIT, MINIGAME
 		}
 
 		private final String name;
@@ -276,10 +284,72 @@ final class Farm
 		Teleport(String name, Kind kind, String portal)
 		{
 			this.name = name;
-			this.ids = kind == Kind.FAIRY ? FAIRY_STAFFS : HOUSE_ENTRY;
+			this.ids = kind == Kind.FAIRY ? FAIRY_STAFFS : kind == Kind.MINIGAME ? new int[0] : HOUSE_ENTRY;
 			this.spell = null;
 			this.kind = kind;
 			this.portal = portal;
+		}
+	}
+
+	/** A spell's name in the spellbook, or null if the teleport isn't a spell. */
+	static String spellName(Teleport t)
+	{
+		switch (t)
+		{
+			case FALADOR_SPELL:
+				return "Falador Teleport";
+			case CAMELOT_SPELL:
+				return "Camelot Teleport";
+			case ARDOUGNE_SPELL:
+				return "Ardougne Teleport";
+			case FORTIS_SPELL:
+				return "Civitas illa Fortis Teleport";
+			case TROLLHEIM_SPELL:
+				return "Trollheim Teleport";
+			case CATHERBY_SPELL:
+				return "Catherby Teleport";
+			case FISHING_GUILD_SPELL:
+				return "Fishing Guild Teleport";
+			case FENKENSTRAIN_SPELL:
+				return "Fenkenstrain's Castle Teleport";
+			case HARMONY_SPELL:
+				return "Harmony Island Teleport";
+			default:
+				return null;
+		}
+	}
+
+	/**
+	 * The option to pick in the teleport's menu (jewellery, talisman, spirit
+	 * tree, portal nexus), or null when there's no menu.
+	 */
+	static String menuOption(Teleport t, Patch p)
+	{
+		switch (t)
+		{
+			case XERICS_TALISMAN:
+			case PORTAL_XERIC:
+				return "Xeric's Glade";
+			case SKILLS_NECKLACE:
+				return p == Patch.FARMING_GUILD ? "Farming Guild" : p == Patch.ARDOUGNE ? "Fishing Guild" : "Woodcutting Guild";
+			case GLORY:
+				return "Draynor Village";
+			case MEMOIRS:
+				return "Lunch by the Lancalliums";
+			case QUETZAL_WHISTLE:
+				return "Hunter Guild";
+			case SPIRIT_GUILD:
+				return "Farming Guild";
+			case SPIRIT_HOSIDIUS:
+				return "Hosidius";
+			case SPIRIT_PORT_SARIM:
+				return "Port Sarim";
+			case TITHE_FARM:
+				return "Tithe Farm";
+			default:
+				// A house portal may be in a portal nexus: its destination is the option.
+				return t.getKind() == Teleport.Kind.PORTAL && t != Teleport.PORTAL_XERIC
+					? t.getName().replace("House portal: ", "") : null;
 		}
 	}
 
@@ -302,11 +372,17 @@ final class Farm
 				return "Rub > Draynor Village, walk north-west";
 			case ECTOPHIAL:
 				return "Empty, walk west";
+			case MORYTANIA_LEGS:
+				return "Ectofuntus Pit, climb up, walk west";
+			case TITHE_FARM:
+				return "Grouping > Tithe Farm, walk north-west";
 			case MEMOIRS:
 				return "Reminisce > Lunch by the Lancalliums";
 			case QUETZAL_WHISTLE:
 				return "Signal > Hunter Guild, walk north";
 			case STONY_BASALT:
+				// Landing on the roof needs the Fremennik hard diary and 73 Agility (Wiki: Stony basalt).
+				return "Teleport, climb up if you land below";
 			case ICY_BASALT:
 				return "Teleport";
 			case HOUSE_HOSIDIUS:
@@ -334,6 +410,32 @@ final class Farm
 	/** Ways into your house, best first. */
 	static final int[] HOUSE_ENTRY = {ItemID.SKILLCAPE_MAX, ItemID.SKILLCAPE_CONSTRUCTION_TRIMMED,
 		ItemID.SKILLCAPE_CONSTRUCTION, ItemID.POH_TABLET_TELEPORTTOHOUSE};
+	/**
+	 * Teleports a day for limited tiers, -1 for unlimited or not limited
+	 * (Wiki: Ardougne, Lumbridge & Draynor and Morytania diaries).
+	 */
+	static int dailyLimit(int itemId)
+	{
+		switch (itemId)
+		{
+			case ItemID.ARDY_CAPE_MEDIUM:
+			case ItemID.LUMBRIDGE_RING_MEDIUM:
+				return 3;
+			case ItemID.ARDY_CAPE_HARD:
+			case ItemID.MORYTANIA_LEGS_MEDIUM:
+			case ItemID.MORYTANIA_LEGS_HARD:
+				return 5;
+			case ItemID.MORYTANIA_LEGS_EASY:
+				return 2;
+			default:
+				return -1;
+		}
+	}
+
+	/** Fertile Soil: supercompost on a patch, before or after planting (Wiki: Fertile_Soil). */
+	static final Spell FERTILE_SOIL = new Spell(LUNAR, 83, Quest.LUNAR_DIPLOMACY, Rune.EARTH, 15, Rune.ASTRAL, 3, Rune.NATURE, 2);
+	/** Teleport to House: the way in when you have no cape or tablet (Wiki: Teleport_to_House). */
+	static final Spell HOUSE_SPELL = new Spell(STANDARD, 40, null, Rune.LAW, 1, Rune.AIR, 1, Rune.EARTH, 1);
 	/** POH_HOUSE_LOCATION value for Hosidius. */
 	static final int HOUSE_IN_HOSIDIUS = 8;
 
@@ -366,10 +468,10 @@ final class Farm
 	enum Patch
 	{
 		FARMING_GUILD("Farming Guild", 2, true, 65, null, false,
-			Teleport.FARMING_CAPE, Teleport.SKILLS_NECKLACE, Teleport.FAIRY_CIR, Teleport.SPIRIT_GUILD),
+			Teleport.FARMING_CAPE, Teleport.SKILLS_NECKLACE, Teleport.SPIRIT_GUILD, Teleport.FAIRY_CIR),
 		HOSIDIUS("Hosidius", 2, true, 0, null, false,
-			Teleport.XERICS_TALISMAN, Teleport.PORTAL_XERIC, Teleport.MEMOIRS, Teleport.HOUSE_HOSIDIUS, Teleport.FAIRY_AKR, Teleport.SPIRIT_HOSIDIUS,
-			Teleport.HOSIDIUS_TAB,
+			Teleport.XERICS_TALISMAN, Teleport.PORTAL_XERIC, Teleport.HOUSE_HOSIDIUS, Teleport.MEMOIRS, Teleport.FAIRY_AKR, Teleport.SPIRIT_HOSIDIUS,
+			Teleport.TITHE_FARM, Teleport.HOSIDIUS_TAB,
 			Teleport.SKILLS_NECKLACE),
 		CIVITAS("Civitas illa Fortis", 2, true, 0, Quest.CHILDREN_OF_THE_SUN, false,
 			// The spell works from anywhere; a fairy ring first needs getting to one.
@@ -379,12 +481,13 @@ final class Farm
 			Teleport.FISHING_GUILD_SPELL, Teleport.FISHING_GUILD_TAB, Teleport.ARDOUGNE_SPELL, Teleport.ARDOUGNE_TAB,
 			Teleport.FAIRY_BLR),
 		CATHERBY("Catherby", 2, true, 0, null, false,
-			Teleport.PORTAL_CATHERBY, Teleport.CATHERBY_SPELL, Teleport.CATHERBY_TAB, Teleport.PORTAL_CAMELOT,
+			// The spell and tablet land by the patch; a portal first needs a trip through your house.
+			Teleport.CATHERBY_SPELL, Teleport.CATHERBY_TAB, Teleport.PORTAL_CATHERBY, Teleport.PORTAL_CAMELOT,
 			Teleport.CAMELOT_SPELL, Teleport.CAMELOT_TAB),
 		FALADOR("Falador", 2, true, 0, null, false,
-			Teleport.EXPLORERS_RING, Teleport.PORTAL_FALADOR, Teleport.FALADOR_SPELL, Teleport.FALADOR_TAB, Teleport.GLORY),
+			Teleport.EXPLORERS_RING, Teleport.SPIRIT_PORT_SARIM, Teleport.PORTAL_FALADOR, Teleport.FALADOR_SPELL, Teleport.FALADOR_TAB, Teleport.GLORY),
 		MORYTANIA("Port Phasmatys", 2, true, 0, Quest.PRIEST_IN_PERIL, false,
-			Teleport.ECTOPHIAL, Teleport.FAIRY_ALQ, Teleport.PORTAL_FENKENSTRAIN, Teleport.FENKENSTRAIN_SPELL,
+			Teleport.ECTOPHIAL, Teleport.MORYTANIA_LEGS, Teleport.FAIRY_ALQ, Teleport.PORTAL_FENKENSTRAIN, Teleport.FENKENSTRAIN_SPELL,
 			Teleport.FENKENSTRAIN_TAB),
 		TROLL_STRONGHOLD("Troll Stronghold", 0, false, 0, Quest.MY_ARMS_BIG_ADVENTURE, false,
 			Teleport.STONY_BASALT, Teleport.PORTAL_TROLL_STRONGHOLD, Teleport.PORTAL_TROLLHEIM, Teleport.TROLLHEIM_SPELL,
@@ -392,7 +495,7 @@ final class Farm
 		WEISS("Weiss", 0, false, 0, Quest.MAKING_FRIENDS_WITH_MY_ARM, false,
 			Teleport.ICY_BASALT, Teleport.PORTAL_WEISS),
 		HARMONY("Harmony Island", 1, false, 0, null, true,
-			Teleport.PORTAL_HARMONY, Teleport.HARMONY_SPELL, Teleport.HARMONY_TAB);
+			Teleport.HARMONY_SPELL, Teleport.HARMONY_TAB, Teleport.PORTAL_HARMONY);
 
 		private final String name;
 		private final int allotments;

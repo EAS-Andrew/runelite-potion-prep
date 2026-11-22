@@ -1,5 +1,8 @@
 package com.potionprep;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import lombok.Getter;
 
@@ -17,7 +20,9 @@ public final class Node
 	private final int[] doseIds;
 	/** Where to get it when it cannot be made, or null. */
 	private final String source;
+	/** The usual way to make it; see {@link #getRecipes} for the others. */
 	private Recipe recipe;
+	private final List<Recipe> others = new ArrayList<>();
 
 	private Node(String name, int id, int[] doseIds, String source)
 	{
@@ -41,6 +46,26 @@ public final class Node
 	{
 		this.recipe = recipe;
 		return this;
+	}
+
+	/** Another way to make it, e.g. extended super antifire from extended antifire. */
+	Node orMadeBy(Recipe recipe)
+	{
+		others.add(recipe);
+		return this;
+	}
+
+	/** Every way to make it, the usual one first; empty if it can't be made. */
+	public List<Recipe> getRecipes()
+	{
+		if (recipe == null)
+		{
+			return Collections.emptyList();
+		}
+		List<Recipe> all = new ArrayList<>();
+		all.add(recipe);
+		all.addAll(others);
+		return all;
 	}
 
 	public boolean isDosed()

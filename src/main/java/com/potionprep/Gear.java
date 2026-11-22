@@ -23,12 +23,12 @@ final class Gear
 
 	private enum Slot
 	{
+		// Prescription goggles (unfocused, focused). The rest of the alchemist
+		// outfit (labcoat, pants, gloves) is cosmetic, so it isn't laid out.
 		HEAD(0, 1, ItemID.MM_ALCHEMIST_HAT, ItemID.MM_ALCHEMIST_HAT_ALT),
 		CAPE(1, 0, ItemID.SKILLCAPE_HERBLORE_TRIMMED, ItemID.SKILLCAPE_HERBLORE),
-		NECK(1, 1, ItemID.AMULET_OF_CHEMISTRY_IMBUED_CHARGED, ItemID.AMULET_OF_CHEMISTRY),
-		BODY(2, 1, ItemID.MM_ALCHEMIST_BODY, ItemID.MM_ALCHEMIST_BODY_ALT),
-		LEGS(3, 1, ItemID.MM_ALCHEMIST_LEGS, ItemID.MM_ALCHEMIST_LEGS_ALT),
-		HANDS(4, 0, ItemID.MM_ALCHEMIST_GLOVES);
+		// Alchemist's amulet (charged, then uncharged so you can charge it), amulet of chemistry.
+		NECK(1, 1, ItemID.AMULET_OF_CHEMISTRY_IMBUED_CHARGED, ItemID.AMULET_OF_CHEMISTRY_IMBUED_UNCHARGED, ItemID.AMULET_OF_CHEMISTRY);
 
 		final int row;
 		final int col;

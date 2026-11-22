@@ -202,4 +202,49 @@ public class HerbRunTest
 		assertFalse(r.onPosition(false));
 		assertEquals(Patch.FALADOR, r.current().getPatch());
 	}
+
+	@Test
+	public void compostComesBackOnWhenYouGetMore()
+	{
+		HerbRun r = run(true, FlowerSeed.NONE);
+		assertTrue(r.setCompostCarried(false));
+		assertFalse(r.isCompost());
+		assertTrue(r.setCompostCarried(true));
+		assertTrue(r.isCompost());
+	}
+
+	@Test
+	public void picksAreCounted()
+	{
+		HerbRun r = run(false, FlowerSeed.NONE);
+		r.onMessage("You pick a Grimy ranarr weed.");
+		r.onMessage("You pick a Grimy ranarr weed.");
+		assertEquals(2, r.getPicked());
+	}
+
+	@Test
+	public void fertileSoilKeepsTheStopOpenAfterPlanting()
+	{
+		FarmPlan.Settings s = FarmPlan.Settings.builder().herb(HerbSeed.RANARR).flower(FlowerSeed.NONE)
+			.allotment(AllotmentSeed.NONE).patches(EnumSet.of(Patch.FALADOR, Patch.CATHERBY))
+			.overrides(Collections.emptyMap()).build();
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.RANARR_SEED, 2);
+		bank.put(ItemID.EARTHRUNE, 100);
+		bank.put(ItemID.ASTRALRUNE, 100);
+		bank.put(ItemID.NATURERUNE, 100);
+		bank.put(ItemID.LAWRUNE, 100);
+		bank.put(ItemID.WATERRUNE, 100);
+		FarmPlan plan = FarmPlan.compute(s, bank, new HashSet<>(),
+			FarmPlan.Account.builder().farming(99).magic(99).spellbook(Farm.LUNAR).build());
+		assertTrue(plan.isFertileSoil());
+		HerbRun r = HerbRun.from(plan, s, 0);
+		assertTrue(r.isCompost());
+		Patch first = r.current().getPatch();
+		r.onMessage("You plant a Ranarr seed in the herb patch.");
+		// Seeded first: still here until Fertile Soil goes on.
+		assertEquals(first, r.current().getPatch());
+		r.onMessage("The herb patch has been treated with supercompost.");
+		assertTrue(r.finished() || r.current().getPatch() != first);
+	}
 }

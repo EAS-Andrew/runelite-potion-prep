@@ -19,15 +19,21 @@ public class GearTest
 		bank.put(ItemID.AMULET_OF_CHEMISTRY, 5);
 		bank.put(ItemID.MM_ALCHEMIST_GLOVES, 1);
 		bank.put(ItemID.SKILLCAPE_HERBLORE, 1);
-		// Wearing a trimmed cape: the banked untrimmed one still wins;
-		// the labcoat is only a placeholder, so it shows faded.
+		// Wearing a trimmed cape: the banked untrimmed one still wins. The
+		// gloves and labcoat are cosmetic, so they never show.
 		List<int[]> rows = Gear.rows(id -> bank.getOrDefault(id, 0) > 0,
 			id -> id == ItemID.SKILLCAPE_HERBLORE_TRIMMED || id == ItemID.MM_ALCHEMIST_BODY_ALT);
-		assertEquals(4, rows.size());
+		assertEquals(2, rows.size());
 		assertArrayEquals(new int[]{-1, ItemID.MM_ALCHEMIST_HAT, -1}, rows.get(0));
 		assertArrayEquals(new int[]{ItemID.SKILLCAPE_HERBLORE, ItemID.AMULET_OF_CHEMISTRY, -1}, rows.get(1));
-		assertArrayEquals(new int[]{-1, ItemID.MM_ALCHEMIST_BODY_ALT, -1}, rows.get(2));
-		assertArrayEquals(new int[]{ItemID.MM_ALCHEMIST_GLOVES, -1, -1}, rows.get(3));
+	}
+
+	@Test
+	public void unchargedAlchemistsAmuletBeatsChemistry()
+	{
+		List<int[]> rows = Gear.rows(id -> id == ItemID.AMULET_OF_CHEMISTRY_IMBUED_UNCHARGED || id == ItemID.AMULET_OF_CHEMISTRY, id -> false);
+		assertArrayEquals(new int[]{-1, ItemID.AMULET_OF_CHEMISTRY_IMBUED_UNCHARGED, -1}, rows.get(0));
+		assertEquals(false, Gear.allIds().contains(ItemID.MM_ALCHEMIST_GLOVES));
 	}
 
 	@Test

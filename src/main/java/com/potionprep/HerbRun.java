@@ -116,8 +116,12 @@ public class HerbRun
 		Pattern.CASE_INSENSITIVE);
 
 	private final List<Stop> stops;
+	/** The seed each kind of plot was planned with, so changing the config mid-run doesn't change the run. */
+	private final java.util.Map<PlotType, Integer> seedIds = new java.util.EnumMap<>(PlotType.class);
 	/** You have compost (carried or at the leprechaun), so plots also need composting. Turns off if you run out. */
 	private boolean compost;
+	/** The run started with compost, so it can come back on if you get more. */
+	private final boolean planned;
 	private final long startedAt;
 	private int index;
 	/** Stops skipped rather than done. */
@@ -127,6 +131,7 @@ public class HerbRun
 	{
 		this.stops = Collections.unmodifiableList(stops);
 		this.compost = compost;
+		this.planned = compost;
 		this.startedAt = startedAt;
 	}
 
@@ -195,8 +200,15 @@ public class HerbRun
 				stops.add(new Stop(p, p.getName(), PatchPlaces.point(p), st.getTeleport(), st.getItemId(), plots));
 			}
 		}
-		boolean compost = plan.getSupplies().stream().anyMatch(s -> isCompost(s.getItemId()) && s.getHave() > 0);
-		return new HerbRun(stops, compost, now);
+		boolean compost = plan.isFertileSoil()
+			|| plan.getSupplies().stream().anyMatch(s -> isCompost(s.getItemId()) && s.getHave() > 0);
+		HerbRun run = new HerbRun(stops, compost, now);
+		run.fertileSoil = plan.isFertileSoil();
+		run.expected = plan.getExpectedHerbs();
+		run.seedIds.put(PlotType.HERB, settings.getHerb().getSeedId());
+		run.seedIds.put(PlotType.FLOWER, settings.getFlower().getSeedId());
+		run.seedIds.put(PlotType.ALLOTMENT, settings.getAllotment().getSeedId());
+		return run;
 	}
 
 	/**
@@ -255,7 +267,14 @@ public class HerbRun
 	 */
 	boolean setCompostCarried(boolean carried)
 	{
-		if (!compost || carried)
+		if (carried)
+		{
+			// Got some again (e.g. took more from the leprechaun): plots want it again.
+			boolean changed = planned && !compost;
+			compost |= planned;
+			return changed;
+		}
+		if (!compost)
 		{
 			return false;
 		}
@@ -338,6 +357,12 @@ public class HerbRun
 		return false;
 	}
 
+	/** The seed a kind of plot is planted with on this run, -1 if none. */
+	int seedId(PlotType type)
+	{
+		return seedIds.getOrDefault(type, -1);
+	}
+
 	/** The stop in hand, or null when the run is over. */
 	public Stop current()
 	{
@@ -364,8 +389,25 @@ public class HerbRun
 	 *
 	 * @return true if anything changed
 	 */
+	/** Composting by casting Fertile Soil: no compost item to run out of. */
+	@Getter
+	private boolean fertileSoil;
+
+	/** Herbs picked on this run, one per "You pick a Grimy ..." message. */
+	@Getter
+	private int picked;
+	/** Herbs the plan expects this run's planting to give, picked next run. */
+	@Getter
+	private double expected;
+
+	private static final Pattern PICK = Pattern.compile("^You pick (?:a|an|\\d+) grimy ", Pattern.CASE_INSENSITIVE);
+
 	boolean onMessage(String message)
 	{
+		if (PICK.matcher(message).find())
+		{
+			picked++;
+		}
 		Stop stop = current();
 		if (stop == null)
 		{

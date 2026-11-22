@@ -101,6 +101,17 @@ public interface PotionPrepConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "farmOrder",
+		name = "",
+		description = "",
+		hidden = true
+	)
+	default String farmOrder()
+	{
+		return "";
+	}
+
+	@ConfigItem(
 		keyName = "farmTeleports",
 		name = "",
 		description = "",
@@ -120,6 +131,17 @@ public interface PotionPrepConfig extends Config
 	default boolean skipGrowing()
 	{
 		return true;
+	}
+
+	@ConfigItem(
+		keyName = "saveRunes",
+		name = "Save runes",
+		description = "Pick teleports that cost no runes (items, tablets, fairy rings, house portals) before spells.",
+		position = 4
+	)
+	default boolean saveRunes()
+	{
+		return false;
 	}
 
 	@ConfigSection(
@@ -306,6 +328,18 @@ public interface PotionPrepConfig extends Config
 		position = 13
 	)
 	default boolean spiritHosidius()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "spiritPortSarim",
+		name = "Spirit tree: Port Sarim",
+		description = "You've grown a spirit tree at Port Sarim (just south of the Falador farm)",
+		section = travelSection,
+		position = 13
+	)
+	default boolean spiritPortSarim()
 	{
 		return false;
 	}

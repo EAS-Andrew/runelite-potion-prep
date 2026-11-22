@@ -1,6 +1,7 @@
 package com.potionprep;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import lombok.Getter;
 import lombok.Value;
@@ -14,6 +15,11 @@ public final class Recipe
 	{
 		Node node;
 		int qty;
+		/**
+		 * Items that can stand in for {@link #node} if already held, e.g. a
+		 * torstol potion (unf) in place of a torstol. Never made for this.
+		 */
+		List<Node> alts;
 	}
 
 	private final int level;
@@ -30,6 +36,8 @@ public final class Recipe
 	private final String stepFormat;
 	/** Herblore XP per craft. */
 	private double xp;
+	/** An unf potion the Herblore cape can make straight from the grimy herb. */
+	private boolean fromGrimy;
 
 	private Recipe(int level, boolean altForm, int yield, Node tool, String stepFormat, Input... inputs)
 	{
@@ -48,9 +56,37 @@ public final class Recipe
 		return this;
 	}
 
+	/** Marks an unf recipe whose herb the Herblore cape lets you add grimy. */
+	Recipe fromGrimy()
+	{
+		this.fromGrimy = true;
+		return this;
+	}
+
+	/**
+	 * Made a dose at a time: one dosed input per craft, and the product keeps
+	 * that potion's dose (super energy(3) makes stamina(3)).
+	 */
+	public boolean isPerDose()
+	{
+		return yield == 1 && !inputs.isEmpty() && inputs.get(0).getNode().isDosed() && inputs.get(0).getQty() == 1;
+	}
+
+	/** Takes this dosed input as whole (4)s, so other doses must be decanted first. */
+	public static boolean needsFull(Input in)
+	{
+		return in.getNode().isDosed() && in.getQty() == 4;
+	}
+
 	static Input in(Node node, int qty)
 	{
-		return new Input(node, qty);
+		return new Input(node, qty, Collections.emptyList());
+	}
+
+	/** Like {@link #in}, but any of {@code alts} already held is used first. */
+	static Input inAny(Node node, int qty, Node... alts)
+	{
+		return new Input(node, qty, Arrays.asList(alts));
 	}
 
 	static Recipe clean(Node grimy, int level)

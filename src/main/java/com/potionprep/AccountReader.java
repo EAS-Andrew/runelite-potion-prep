@@ -20,8 +20,11 @@ final class AccountReader
 	static final Quest[] QUESTS = {
 		Quest.PRIEST_IN_PERIL, Quest.MY_ARMS_BIG_ADVENTURE, Quest.MAKING_FRIENDS_WITH_MY_ARM,
 		Quest.CHILDREN_OF_THE_SUN, Quest.PLAGUE_CITY, Quest.EADGARS_RUSE, Quest.LUNAR_DIPLOMACY,
-		Quest.THE_GREAT_BRAIN_ROBBERY, Quest.TWILIGHTS_PROMISE,
+		Quest.THE_GREAT_BRAIN_ROBBERY, Quest.TWILIGHTS_PROMISE, Quest.TREE_GNOME_VILLAGE, Quest.THE_DEPTHS_OF_DESPAIR,
 	};
+
+	/** Named SLUG2_REGIONUID in gameval, but it's when the Grouping teleport was last used (Shortest Path, Farm Run Autopilot). */
+	static final int GROUPING_LAST_USED = net.runelite.api.gameval.VarPlayerID.SLUG2_REGIONUID;
 
 	static final int[] POUCH_TYPES = {VarbitID.RUNE_POUCH_TYPE_1, VarbitID.RUNE_POUCH_TYPE_2, VarbitID.RUNE_POUCH_TYPE_3,
 		VarbitID.RUNE_POUCH_TYPE_4, VarbitID.RUNE_POUCH_TYPE_5, VarbitID.RUNE_POUCH_TYPE_6};
@@ -83,6 +86,12 @@ final class AccountReader
 			.autoweed(client.getVarbitValue(VarbitID.FARMING_BLOCKWEEDS) == 2)
 			.kourendEasy(client.getVarbitValue(VarbitID.KOUREND_DIARY_EASY_COMPLETE) == 1)
 			.kourendHard(client.getVarbitValue(VarbitID.KOUREND_DIARY_HARD_COMPLETE) == 1)
+			.ringUses(client.getVarbitValue(VarbitID.LUMBRIDGE_CABBAGE_TELEPORT))
+			.legsUses(client.getVarbitValue(VarbitID.MORYTANIA_LEGS_LAST_TELEPORT))
+			.titheUnlocked(client.getVarbitValue(VarbitID.ZEAH_TITHE_MINIGAME_UNLOCKED) == 1)
+			// Varp 888 holds the minute (since 1970) a Grouping teleport was last used; the cooldown is 20 minutes.
+			.groupingReady(java.time.Instant.now().getEpochSecond() / 60 - client.getVarpValue(GROUPING_LAST_USED) > 20)
+			.civitasDiseaseFree(client.getVarpValue(net.runelite.api.gameval.VarPlayerID.COLOSSEUM_GLORY) >= 16000)
 			.lumbridgeElite(client.getVarbitValue(VarbitID.LUMBRIDGE_DIARY_ELITE_COMPLETE) == 1)
 			.houseLocation(client.getVarbitValue(VarbitID.POH_HOUSE_LOCATION))
 			.portals(portals)

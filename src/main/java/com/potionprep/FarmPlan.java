@@ -37,6 +37,9 @@ public final class FarmPlan
 		Set<Patch> patches;
 		/** Teleport picked by hand per patch; missing means automatic. */
 		Map<Patch, Teleport> overrides;
+		/** Run order, every patch once (the player can drag them in the panel). */
+		@Builder.Default
+		List<Patch> order = java.util.Arrays.asList(Patch.values());
 	}
 
 	/** What the game says about the player, beyond item counts. Unknown values never lock anything. */
@@ -103,6 +106,21 @@ public final class FarmPlan
 		boolean kourendEasy;
 		/** Kourend hard diary: more herbs at Hosidius and the Farming Guild. */
 		boolean kourendHard;
+		/** Today's uses of the daily-limited farm teleports (cloak from chat, ring and legs from varbits). */
+		int cloakUses;
+		int ringUses;
+		int legsUses;
+		/** Been in Tithe Farm (unlocks its Grouping teleport); null if unknown. */
+		Boolean titheUnlocked;
+		/** The Grouping teleport's 20 minute cooldown is over. */
+		@Builder.Default
+		boolean groupingReady = true;
+		/** Prefer teleports that cost no runes (items, tablets, fairy rings, portals). */
+		boolean saveRunes;
+		/** Attas growing in the anima patch (a config setting): more herbs everywhere. */
+		boolean attas;
+		/** 16,000 Fortis Colosseum glory: the Civitas patch can't get diseased. */
+		boolean civitasDiseaseFree;
 		/** Seed vault contents, or empty if it hasn't been opened. */
 		@Builder.Default
 		Map<Integer, Integer> seedVault = Collections.emptyMap();
@@ -176,6 +194,8 @@ public final class FarmPlan
 	private final double expectedHerbs;
 	/** Snape grass and limpwurt roots expected from the allotments and flower patches planted. */
 	private double expectedSnape;
+	/** Compost comes from casting Fertile Soil, not items. */
+	private boolean fertileSoil;
 	private double expectedLimpwurt;
 
 	/** How many of each item to withdraw (seeds, compost, runes, tablets), for the bank overlay. */
@@ -229,7 +249,7 @@ public final class FarmPlan
 		long nextReady = 0;
 		int flowerPatches = 0;
 		int allotments = 0;
-		for (Patch p : Patch.values())
+		for (Patch p : s.getOrder())
 		{
 			if (!s.getPatches().contains(p))
 			{
@@ -238,12 +258,20 @@ public final class FarmPlan
 			String lock = lockReason(p, acct);
 			Teleport manual = s.getOverrides().get(p);
 			Teleport auto = null;
-			for (Teleport t : p.getTeleports())
+			// Saving runes: everything that doesn't cast a spell first, then the spells.
+			for (int pass = acct.isSaveRunes() ? 0 : 1; pass < 2 && auto == null; pass++)
 			{
-				if (problem(t, owned, counts, tabletsUsed, runes, acct) == null)
+				for (Teleport t : p.getTeleports())
 				{
-					auto = t;
-					break;
+					if (pass == 0 && t.getSpell() != null)
+					{
+						continue;
+					}
+					if (problem(t, owned, counts, tabletsUsed, runes, acct) == null)
+					{
+						auto = t;
+						break;
+					}
 				}
 			}
 			Teleport pick = manual != null ? manual : auto != null ? auto : firstItem(p);
@@ -269,6 +297,11 @@ public final class FarmPlan
 			if (pick != null && pick.getSpell() != null)
 			{
 				runes.spend(pick.getSpell());
+			}
+			else if (problem == null && id == -1 && entersHouse(pick))
+			{
+				// No cape or tablet: Teleport to House.
+				runes.spend(Farm.HOUSE_SPELL);
 			}
 			else if (pick != null && problem == null && id != -1 && Farm.consumable(id))
 			{
@@ -338,6 +371,29 @@ public final class FarmPlan
 				toolRow.add(tool);
 			}
 		}
+		// A patch Time Tracking last saw diseased needs a plant cure, or it may die.
+		int diseased = 0;
+		for (Patch p : planted)
+		{
+			PatchStatus st = acct.getPatchStatus().get(p);
+			diseased += st != null && st.getState() == PatchStatus.State.DISEASED ? 1 : 0;
+		}
+		if (diseased > 0)
+		{
+			int banked = counts.getOrDefault(ItemID.PLANT_CURE, 0);
+			int stored = leprechaun.getOrDefault(ItemID.PLANT_CURE, 0);
+			boolean atLeprechaun = banked == 0 && stored > 0;
+			supplies.add(new Supply("Plant cure", ItemID.PLANT_CURE, banked + stored, diseased, atLeprechaun ? "Leprechaun" : null));
+			if (!atLeprechaun)
+			{
+				toolRow.add(ItemID.PLANT_CURE);
+			}
+			if (banked + stored < diseased)
+			{
+				steps.add(new Step(Severity.WARNING, "Short " + (diseased - banked - stored) + " plant cure",
+					diseased + (diseased == 1 ? " patch is" : " patches are") + " diseased. Or cast Cure Plant (Lunar)."));
+			}
+		}
 		if (owned.test(Farm.MAGIC_SECATEURS))
 		{
 			supplies.add(new Supply("Magic secateurs", Farm.MAGIC_SECATEURS, 1, 1));
@@ -346,6 +402,9 @@ public final class FarmPlan
 		else if (leprechaun.getOrDefault(Farm.MAGIC_SECATEURS, 0) > 0)
 		{
 			supplies.add(new Supply("Magic secateurs", Farm.MAGIC_SECATEURS, 1, 1, "Leprechaun"));
+			// They only boost the yield worn or in your inventory.
+			steps.add(new Step(Severity.ACTION, "Take your magic secateurs from the leprechaun",
+				"They only add herbs when worn or carried, not stored."));
 		}
 		// Compost kept at the leprechaun is taken out at the first patch: nothing to withdraw.
 		Supply compostSupply = null;
@@ -362,6 +421,30 @@ public final class FarmPlan
 		}
 		// Yield counts compost only if you have some.
 		int tier = compostSupply != null && compostSupply.getHave() > 0 ? compostTier(compostId, acct) : 0;
+		// No compost, but on the Lunar spellbook with the runes: Fertile Soil does it (as supercompost).
+		boolean fertileSoil = false;
+		if (tier == 0 && plots > 0 && canCast(Farm.FERTILE_SOIL, acct))
+		{
+			int casts = 0;
+			while (casts < plots && runes.canAfford(Farm.FERTILE_SOIL))
+			{
+				runes.spend(Farm.FERTILE_SOIL);
+				casts++;
+			}
+			if (casts > 0)
+			{
+				fertileSoil = true;
+				tier = 2;
+				final int bucketId = compostId;
+				supplies.removeIf(sup -> sup.getItemId() == bucketId && sup.getHave() == 0);
+				toolRow.remove(Integer.valueOf(bucketId));
+				steps.removeIf(st -> st.getText().startsWith("Short") && st.getText().endsWith("compost"));
+				if (casts < plots)
+				{
+					steps.add(new Step(Severity.WARNING, "Runes for " + casts + " of " + plots + " Fertile Soil casts", null));
+				}
+			}
+		}
 
 		// Runes for the spells on this run.
 		List<Integer> runeRow = runes.supplies(supplies, steps);
@@ -420,6 +503,7 @@ public final class FarmPlan
 			}
 		}
 		FarmPlan plan = new FarmPlan(stops, supplies, steps, rows, s.getHerb(), expected, withdraw);
+		plan.fertileSoil = fertileSoil;
 		if (acct.getFarming() > 0)
 		{
 			boolean secateurs = owned.test(Farm.MAGIC_SECATEURS) || leprechaun.getOrDefault(Farm.MAGIC_SECATEURS, 0) > 0;
@@ -458,17 +542,17 @@ public final class FarmPlan
 		{
 			return 0;
 		}
+		// Secateurs at the leprechaun count: the plan tells you to take them out.
 		double item = (owned.test(Farm.MAGIC_SECATEURS) || leprechaun.getOrDefault(Farm.MAGIC_SECATEURS, 0) > 0 ? 0.10 : 0)
 			+ (owned.test(ItemID.SKILLCAPE_FARMING) || owned.test(ItemID.SKILLCAPE_FARMING_TRIMMED)
 			|| owned.test(ItemID.SKILLCAPE_MAX) ? 0.05 : 0);
 		double total = 0;
 		for (Patch p : planted)
 		{
-			double diary = p == Patch.CATHERBY ? 0.05 * acct.getKandarinDiary()
-				: (p == Patch.HOSIDIUS || p == Patch.FARMING_GUILD) && acct.isKourendHard() ? 0.05 : 0;
-			boolean diseaseFree = p == Patch.TROLL_STRONGHOLD || p == Patch.WEISS || p == Patch.HARMONY
-				|| p == Patch.HOSIDIUS && acct.isKourendEasy();
-			total += Yield.expected(herb.getLowSave(), acct.getFarming(), item + diary, compost, diseaseFree);
+			int diary = p == Patch.CATHERBY ? KANDARIN_BONUS[Math.max(0, Math.min(3, acct.getKandarinDiary()))]
+				: (p == Patch.HOSIDIUS || p == Patch.FARMING_GUILD) && acct.isKourendHard() ? 10 : 0;
+			total += Yield.expected(herb.getLowSave(), acct.getFarming(), item, diary, acct.isAttas(), compost,
+				diseaseFree(p, acct));
 		}
 		return total;
 	}
@@ -478,6 +562,17 @@ public final class FarmPlan
 	{
 		long m = Math.max(1, (seconds + 59) / 60);
 		return m >= 60 ? (m / 60) + "h " + (m % 60) + "m" : m + "m";
+	}
+
+	/** Catherby's chance-to-save bonus by Kandarin diary tier (none, medium, hard, elite), out of 256. */
+	private static final int[] KANDARIN_BONUS = {0, 10, 17, 25};
+
+	/** Patches that can't get diseased (OSRS Wiki: Herb patch). */
+	static boolean diseaseFree(Patch p, Account acct)
+	{
+		return p == Patch.TROLL_STRONGHOLD || p == Patch.WEISS || p == Patch.HARMONY
+			|| p == Patch.HOSIDIUS && acct.isKourendEasy()
+			|| p == Patch.CIVITAS && acct.isCivitasDiseaseFree();
 	}
 
 	static String lockReason(Patch p, Account acct)
@@ -518,6 +613,15 @@ public final class FarmPlan
 			}
 			return runes.canAfford(spell) ? null : "Not enough runes";
 		}
+		if (t == Teleport.STONY_BASALT && !acct.done(Quest.MAKING_FRIENDS_WITH_MY_ARM))
+		{
+			return "Needs Making Friends with My Arm";
+		}
+		if (t == Teleport.MEMOIRS && !acct.done(Quest.THE_DEPTHS_OF_DESPAIR))
+		{
+			// Lunch by the Lancalliums unlocks with the quest, not the book.
+			return "Needs The Depths of Despair";
+		}
 		switch (t.getKind())
 		{
 			case FAIRY:
@@ -546,6 +650,12 @@ public final class FarmPlan
 					return "No " + t.getName().replace("House portal: ", "") + " portal (set it in the plugin config if you have one)";
 				}
 				break;
+			case MINIGAME:
+				if (!Boolean.TRUE.equals(acct.getTitheUnlocked()))
+				{
+					return "Enter Tithe Farm once first";
+				}
+				return acct.isGroupingReady() ? null : "Grouping teleport is on cooldown";
 			case SPIRIT:
 				if (!acct.getSpiritTrees().contains(t.getPortal()))
 				{
@@ -571,18 +681,90 @@ public final class FarmPlan
 		int id = bestId(t, owned);
 		if (id == -1)
 		{
-			return t.getKind() == Farm.Teleport.Kind.ITEM ? "You don't have one" : "No way into your house";
+			if (entersHouse(t) && canCastHouse(runes, acct))
+			{
+				return null;
+			}
+			return t.getKind() == Farm.Teleport.Kind.ITEM ? "You don't have one" + unlockHint(t)
+				: "No way into your house (house tab, Construction cape or Teleport to House)";
 		}
 		if (t == Teleport.QUETZAL_WHISTLE && id != ItemID.HG_QUETZALWHISTLE_PERFECTED_INFINITE && acct.getWhistleCharges() == 0
 			|| t == Teleport.XERICS_TALISMAN && acct.getXericCharges() == 0)
 		{
 			return "Out of charges";
 		}
+		int limit = Farm.dailyLimit(id);
+		if (limit >= 0 && dailyUses(t, acct) >= limit)
+		{
+			return "Used up for today (" + limit + " a day)";
+		}
 		if (Farm.consumable(id) && counts.getOrDefault(id, 0) <= tabletsUsed.getOrDefault(id, 0))
 		{
 			return "Not enough tablets";
 		}
 		return null;
+	}
+
+	private static int dailyUses(Teleport t, Account acct)
+	{
+		switch (t)
+		{
+			case ARDOUGNE_CLOAK:
+				return acct.getCloakUses();
+			case EXPLORERS_RING:
+				return acct.getRingUses();
+			case MORYTANIA_LEGS:
+				return acct.getLegsUses();
+			default:
+				return 0;
+		}
+	}
+
+	/** Where a teleport item comes from, for ones that aren't obvious. */
+	private static String unlockHint(Teleport t)
+	{
+		switch (t)
+		{
+			case ARDOUGNE_CLOAK:
+				return " (Ardougne medium diary)";
+			case EXPLORERS_RING:
+				return " (Lumbridge & Draynor medium diary)";
+			case MORYTANIA_LEGS:
+				return " (Morytania diary)";
+			case FARMING_CAPE:
+				return " (99 Farming)";
+			case XERICS_TALISMAN:
+				return " (Kourend, from lizardmen)";
+			case STONY_BASALT:
+			case ICY_BASALT:
+				return " (Making Friends with My Arm)";
+			case QUETZAL_WHISTLE:
+				return " (Hunter Guild)";
+			default:
+				return "";
+		}
+	}
+
+	/** A teleport that starts with getting into your house. */
+	static boolean entersHouse(Teleport t)
+	{
+		return t != null && (t.getKind() == Farm.Teleport.Kind.PORTAL || t.getKind() == Farm.Teleport.Kind.HOUSE);
+	}
+
+	/** On the right spellbook with the level and quest (runes are checked separately). */
+	private static boolean canCast(Farm.Spell s, Account acct)
+	{
+		return acct.getSpellbook() == s.getBook()
+			&& (acct.getMagic() <= 0 || acct.getMagic() >= s.getLevel())
+			&& acct.done(s.getQuest());
+	}
+
+	private static boolean canCastHouse(Runes runes, Account acct)
+	{
+		Farm.Spell s = Farm.HOUSE_SPELL;
+		return (acct.getSpellbook() < 0 || acct.getSpellbook() == s.getBook())
+			&& (acct.getMagic() <= 0 || acct.getMagic() >= s.getLevel())
+			&& runes.canAfford(s);
 	}
 
 	/** The item to bring for a teleport, or -1 (spells, staff-free fairy rings). */
@@ -944,39 +1126,48 @@ public final class FarmPlan
 			// Bring it so it can be filled from the compost below.
 			emptyBucket.add(ItemID.BOTTOMLESS_COMPOST_BUCKET);
 		}
-		// Best compost you have enough of (bank, inventory or leprechaun);
-		// otherwise whichever you have most of.
+		// Best compost first (bank, inventory or leprechaun), topped up with the next best.
 		java.util.function.ToIntFunction<Integer> have = id -> counts.getOrDefault(id, 0) + leprechaun.getOrDefault(id, 0);
-		int best = -1;
+		int first = -1;
+		int left = plots;
 		for (int id : Farm.COMPOST)
 		{
-			if (have.applyAsInt(id) >= plots)
+			int n = have.applyAsInt(id);
+			if (n <= 0 || left <= 0)
 			{
-				best = id;
-				break;
+				continue;
+			}
+			int use = Math.min(n, left);
+			compostSupply(id, n, use, counts, leprechaun, supplies);
+			left -= use;
+			if (first == -1)
+			{
+				first = id;
+			}
+			else if (counts.getOrDefault(id, 0) > 0)
+			{
+				// The caller lays out the first kind; the top-up goes beside it.
+				emptyBucket.add(id);
 			}
 		}
-		if (best == -1)
+		if (first == -1)
 		{
-			best = Farm.COMPOST[0];
-			for (int id : Farm.COMPOST)
-			{
-				if (have.applyAsInt(id) > have.applyAsInt(best))
-				{
-					best = id;
-				}
-			}
+			first = Farm.COMPOST[Farm.COMPOST.length - 1];
+			compostSupply(first, 0, plots, counts, leprechaun, supplies);
 		}
-		int total = have.applyAsInt(best);
-		String name = best == ItemID.BUCKET_ULTRACOMPOST ? "Ultracompost" : best == ItemID.BUCKET_SUPERCOMPOST ? "Supercompost" : "Compost";
-		boolean inBank = counts.getOrDefault(best, 0) > 0;
-		supplies.add(new Supply(name, best, total, plots,
-			leprechaun.getOrDefault(best, 0) > 0 && !inBank ? "Leprechaun" : null));
-		if (total < plots)
+		if (left > 0)
 		{
-			steps.add(new Step(Severity.WARNING, "Short " + (plots - total) + " " + lower(name), null));
+			steps.add(new Step(Severity.WARNING, "Short " + left + " compost", null));
 		}
-		return best;
+		return first;
+	}
+
+	private static void compostSupply(int id, int have, int need, Map<Integer, Integer> counts,
+		Map<Integer, Integer> leprechaun, List<Supply> supplies)
+	{
+		String name = id == ItemID.BUCKET_ULTRACOMPOST ? "Ultracompost" : id == ItemID.BUCKET_SUPERCOMPOST ? "Supercompost" : "Compost";
+		boolean inBank = counts.getOrDefault(id, 0) > 0;
+		supplies.add(new Supply(name, id, have, need, leprechaun.getOrDefault(id, 0) > 0 && !inBank ? "Leprechaun" : null));
 	}
 
 	private static void addRow(List<int[]> rows, List<Integer> ids)

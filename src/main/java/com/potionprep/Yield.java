@@ -16,14 +16,37 @@ final class Yield
 	{
 	}
 
-	/**
-	 * @param lowSave chance-to-save at level 1 (out of 256)
-	 * @param bonus   added fraction: magic secateurs 0.10, Farming cape 0.05, diaries
-	 */
-	static double chanceToSave(int lowSave, int level, double bonus)
+	/** Attas growing in the anima patch: 5% more chance to save. */
+	static final double ATTAS = 0.05;
+
+	/** Chance-to-save without diaries or attas. */
+	static double chanceToSave(int lowSave, int level, double itemBonus)
 	{
-		double base = Math.floor(lowSave * (99.0 - level) / 98.0 + HIGH_SAVE * (level - 1.0) / 98.0);
-		return Math.floor(base * (1 + bonus) + 1) / 256.0;
+		return chanceToSave(lowSave, level, itemBonus, 0, false);
+	}
+
+	/**
+	 * The OSRS Wiki's formula: the boosts apply to the level 1 and 99
+	 * constants (items, then the diary's flat bonus, then attas), which are
+	 * then interpolated by level.
+	 *
+	 * @param lowSave   chance-to-save at level 1 (out of 256)
+	 * @param itemBonus magic secateurs 0.10, Farming or Max cape 0.05
+	 * @param diary     flat bonus out of 256: Catherby 10/17/25 (Kandarin medium/hard/elite),
+	 *                  Hosidius and the Farming Guild 10 (Kourend hard)
+	 */
+	static double chanceToSave(int lowSave, int level, double itemBonus, int diary, boolean attas)
+	{
+		double low = boost(lowSave, itemBonus, diary, attas);
+		double high = boost(HIGH_SAVE, itemBonus, diary, attas);
+		// Each half of the interpolation rounds down (the Wiki's herb calculator, per Mod Kieren).
+		return (Math.floor(low * (99.0 - level) / 98.0) + Math.floor(high * (level - 1.0) / 98.0) + 1) / 256.0;
+	}
+
+	private static double boost(int cts, double itemBonus, int diary, boolean attas)
+	{
+		double v = Math.floor(cts * (1 + itemBonus)) + diary;
+		return attas ? Math.floor(v * (1 + ATTAS)) : v;
 	}
 
 	/**
@@ -31,8 +54,14 @@ final class Yield
 	 */
 	static double expected(int lowSave, int level, double bonus, int compost, boolean diseaseFree)
 	{
+		return expected(lowSave, level, bonus, 0, false, compost, diseaseFree);
+	}
+
+	static double expected(int lowSave, int level, double itemBonus, int diary, boolean attas, int compost,
+		boolean diseaseFree)
+	{
 		int tier = Math.max(0, Math.min(3, compost));
-		double herbs = (3 + tier) / (1 - chanceToSave(lowSave, level, bonus));
+		double herbs = (3 + tier) / (1 - chanceToSave(lowSave, level, itemBonus, diary, attas));
 		// Disease can strike in each of the 3 growth cycles before the crop is grown.
 		double survive = diseaseFree ? 1 : Math.pow(1 - DISEASE[tier] / 128.0, 3);
 		return herbs * survive;

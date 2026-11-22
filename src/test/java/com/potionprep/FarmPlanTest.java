@@ -498,4 +498,106 @@ public class FarmPlanTest
 		assertEquals(null, w.get(ItemID.EARTHRUNE));
 		assertEquals(Integer.valueOf(3), w.get(ItemID.LAWRUNE));
 	}
+
+	@Test
+	public void compostKindsAreMixedWhenNoneCoversTheRun()
+	{
+		FarmPlan.Settings s = settings(EnumSet.of(Patch.FALADOR, Patch.CATHERBY, Patch.ARDOUGNE, Patch.MORYTANIA),
+			FlowerSeed.NONE, AllotmentSeed.NONE, Collections.emptyMap());
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.RANARR_SEED, 4);
+		bank.put(ItemID.BUCKET_SUPERCOMPOST, 3);
+		bank.put(ItemID.BUCKET_COMPOST, 5);
+		FarmPlan plan = FarmPlan.compute(s, bank, new HashSet<>(), 99);
+		assertEquals(3, supply(plan, ItemID.BUCKET_SUPERCOMPOST).getNeed());
+		assertEquals(1, supply(plan, ItemID.BUCKET_COMPOST).getNeed());
+		assertTrue(plan.getSteps().stream().noneMatch(st -> st.getText().startsWith("Short")));
+	}
+
+	@Test
+	public void teleportToHouseCountsAsAWayIn()
+	{
+		FarmPlan.Settings s = settings(EnumSet.of(Patch.CATHERBY), FlowerSeed.NONE, AllotmentSeed.NONE,
+			Collections.singletonMap(Patch.CATHERBY, Teleport.PORTAL_CATHERBY));
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.LAWRUNE, 1);
+		bank.put(ItemID.AIRRUNE, 1);
+		bank.put(ItemID.EARTHRUNE, 1);
+		FarmPlan.Account acct = FarmPlan.Account.builder().farming(99).magic(50)
+			.portals(Collections.singleton("CATHERBY")).build();
+		FarmPlan plan = FarmPlan.compute(s, bank, new HashSet<>(), acct);
+		assertEquals(null, plan.getStops().get(0).getProblem());
+	}
+
+	@Test
+	public void savingRunesPicksATabletOverTheSpell()
+	{
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.RANARR_SEED, 1);
+		bank.put(ItemID.POH_TABLET_FALADORTELEPORT, 1);
+		bank.put(ItemID.LAWRUNE, 10);
+		bank.put(ItemID.AIRRUNE, 30);
+		bank.put(ItemID.WATERRUNE, 10);
+		FarmPlan.Settings s = settings(EnumSet.of(Patch.FALADOR), FlowerSeed.NONE, AllotmentSeed.NONE, Collections.emptyMap());
+		FarmPlan.Account.AccountBuilder a = FarmPlan.Account.builder().farming(99).magic(99).spellbook(0);
+		assertEquals(Teleport.FALADOR_SPELL, FarmPlan.compute(s, bank, new HashSet<>(), a.build()).getStops().get(0).getTeleport());
+		assertEquals(Teleport.FALADOR_TAB,
+			FarmPlan.compute(s, bank, new HashSet<>(), a.saveRunes(true).build()).getStops().get(0).getTeleport());
+	}
+
+	@Test
+	public void diaryTeleportsSayWhereTheyComeFrom()
+	{
+		FarmPlan.Settings s = settings(EnumSet.of(Patch.ARDOUGNE), FlowerSeed.NONE, AllotmentSeed.NONE,
+			Collections.singletonMap(Patch.ARDOUGNE, Teleport.ARDOUGNE_CLOAK));
+		FarmPlan plan = FarmPlan.compute(s, new HashMap<>(), new HashSet<>(), 99);
+		assertEquals("You don't have one (Ardougne medium diary)", plan.getStops().get(0).getProblem());
+	}
+
+	@Test
+	public void stopsFollowTheChosenOrder()
+	{
+		java.util.List<Patch> order = new java.util.ArrayList<>(java.util.Arrays.asList(Patch.values()));
+		order.remove(Patch.FALADOR);
+		order.add(0, Patch.FALADOR);
+		FarmPlan.Settings s = FarmPlan.Settings.builder().herb(HerbSeed.RANARR).flower(FlowerSeed.NONE)
+			.allotment(AllotmentSeed.NONE).patches(EnumSet.of(Patch.ARDOUGNE, Patch.FALADOR))
+			.overrides(Collections.emptyMap()).order(order).build();
+		FarmPlan plan = FarmPlan.compute(s, new HashMap<>(), new HashSet<>(), 99);
+		assertEquals(Patch.FALADOR, plan.getStops().get(0).getPatch());
+		assertEquals(Patch.ARDOUGNE, plan.getStops().get(1).getPatch());
+	}
+
+	@Test
+	public void dailyTeleportsFallBackWhenUsedUp()
+	{
+		FarmPlan.Settings s = settings(EnumSet.of(Patch.FALADOR), FlowerSeed.NONE, AllotmentSeed.NONE, Collections.emptyMap());
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.LUMBRIDGE_RING_MEDIUM, 1);
+		bank.put(ItemID.POH_TABLET_FALADORTELEPORT, 1);
+		FarmPlan.Account.AccountBuilder a = FarmPlan.Account.builder().farming(99);
+		assertEquals(Teleport.EXPLORERS_RING, FarmPlan.compute(s, bank, new HashSet<>(), a.ringUses(2).build()).getStops().get(0).getTeleport());
+		assertEquals(Teleport.FALADOR_TAB, FarmPlan.compute(s, bank, new HashSet<>(), a.ringUses(3).build()).getStops().get(0).getTeleport());
+	}
+
+	@Test
+	public void titheFarmTeleportNeedsUnlockAndNoCooldown()
+	{
+		FarmPlan.Settings s = settings(EnumSet.of(Patch.HOSIDIUS), FlowerSeed.NONE, AllotmentSeed.NONE, Collections.emptyMap());
+		FarmPlan.Account.AccountBuilder a = FarmPlan.Account.builder().farming(99).fairyRings(false).titheUnlocked(true);
+		assertEquals(Teleport.TITHE_FARM, FarmPlan.compute(s, new HashMap<>(), new HashSet<>(), a.build()).getStops().get(0).getTeleport());
+		// On cooldown it isn't picked.
+		assertTrue(FarmPlan.compute(s, new HashMap<>(), new HashSet<>(), a.groupingReady(false).build())
+			.getStops().get(0).getTeleport() != Teleport.TITHE_FARM);
+	}
+
+	@Test
+	public void teleportsKnowTheirSpellAndMenuOption()
+	{
+		assertEquals("Civitas illa Fortis Teleport", Farm.spellName(Teleport.FORTIS_SPELL));
+		assertEquals(null, Farm.spellName(Teleport.ARDOUGNE_CLOAK));
+		assertEquals("Fishing Guild", Farm.menuOption(Teleport.SKILLS_NECKLACE, Patch.ARDOUGNE));
+		assertEquals("Catherby", Farm.menuOption(Teleport.PORTAL_CATHERBY, Patch.CATHERBY));
+		assertEquals("Xeric's Glade", Farm.menuOption(Teleport.PORTAL_XERIC, Patch.HOSIDIUS));
+	}
 }

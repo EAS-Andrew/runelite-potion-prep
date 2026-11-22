@@ -34,4 +34,22 @@ public class YieldTest
 		assertEquals(3.5, Yield.limpwurt(11, false), 1e-9);
 		assertEquals(3, Yield.limpwurt(5, false), 1e-9);
 	}
+
+	@Test
+	public void diaryIsAFlatBonusAfterItems()
+	{
+		// 99 Farming, secateurs and cape: floor(80 * 1.15) = 92, Kandarin elite +25, then +1 = 118.
+		assertEquals(118 / 256.0, Yield.chanceToSave(39, 99, 0.15, 25, false), 1e-9);
+		// Kourend hard: 92 + 10 + 1.
+		assertEquals(103 / 256.0, Yield.chanceToSave(39, 99, 0.15, 10, false), 1e-9);
+		// Attas last: floor(102 * 1.05) = 107, + 1.
+		assertEquals(108 / 256.0, Yield.chanceToSave(39, 99, 0.15, 10, true), 1e-9);
+	}
+
+	@Test
+	public void belowNinetyNineFloorsEachHalf()
+	{
+		// Ranarr at level 50: floor(39 * 49/98) = 19, floor(80 * 49/98) = 40, + 1.
+		assertEquals(60 / 256.0, Yield.chanceToSave(39, 50, 0), 1e-9);
+	}
 }

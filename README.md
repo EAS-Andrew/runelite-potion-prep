@@ -16,7 +16,7 @@ Switch to **Herb run** and it plans and guides your herb runs: which patches are
 
 Each grid tile shows how many of that potion you can make from your bank and inventory. Red **Lv** means your Herblore level is too low. An orange count means you can make it with a botanical pie (+4 Herblore). The pie then gets its own row at the top of the bank view, and the first step tells you to eat it. Hover a tile to see the Herblore XP for everything you can make, including cleaning herbs and any potions made along the way.
 
-Herblore gear you own (prescription goggles, the alchemist outfit, amulet of chemistry or alchemist's amulet, Herblore cape) is laid out on the left of the bank view like the equipment tab. Gear that's worn, in your inventory, or left as a bank placeholder shows faded. To use your own outfit instead, wear it and click **Save worn gear**. Each mode keeps its own.
+Herblore gear you own (prescription goggles, amulet of chemistry or alchemist's amulet, Herblore cape) is laid out on the left of the bank view like the equipment tab. Gear that's worn, in your inventory, or left as a bank placeholder shows faded. To use your own outfit instead, wear it and click **Save worn gear**. Each mode keeps its own.
 
 ## Bank layout
 
@@ -29,36 +29,37 @@ One row per task, in the order you do them. Each row holds what the task needs, 
 | Crush | unicorn horn, pestle and mortar |
 | Mix | irit potion (unf), unicorn horn dust |
 
-Potions used as an ingredient, like super energy for a stamina potion, show all four doses, (1) to (4). Items you don't have show faded. The finished potion isn't shown.
+Potions used as an ingredient, like super energy for a stamina potion, show all four doses, (1) to (4). Recipes that need full (4)s (super combat, super antifire, anti-venom+, sanfew serum) show only the (4) in the task row, with the (1) to (3) doses in a decant row before it. With a Herblore cape, grimy herbs go straight into the unf row. If you already have a crushed ingredient and none of the raw one, the crush row is left out. Items you don't have show faded. The finished potion isn't shown.
 
 ## Panel
 
-- **Count:** how many you can make, and how many need prep first (cleaning, unf, crushing).
+- **Count:** how many you can make, and how many need prep first (cleaning, unf, crushing). Potions made a dose at a time keep the dose of what they're made from, so 100 super energy(3) make 100 stamina(3).
 - **Ingredients:** what you have, from bank and inventory. Potions are counted in doses.
 - **To do:** the prep steps in order, then anything you're short of. Hover a shortage to see where to get it.
 
 ## Potions
 
-Attack, Antipoison, Strength, Restore, Energy, Defence, Agility, Combat, Prayer, Super attack, Superantipoison, Fishing, Super energy, Hunter, Super strength, Weapon poison, Super restore, Super defence, Antifire, Ranging, Magic, Stamina, Zamorak brew, Antidote++, Saradomin brew, Extended antifire, Anti-venom, Super combat, Super antifire, Anti-venom+, Extended super antifire.
+Attack, Antipoison, Strength, Restore, Compost, Energy, Defence, Agility, Combat, Prayer, Super attack, Superantipoison, Fishing, Super energy, Hunter, Goading, Super strength, Haemostatic poultice, Haemostatic dressing, Prayer regeneration, Weapon poison, Weapon poison(+), Weapon poison(++), Super fishing, Super restore, Sanfew serum, Super defence, Extreme energy, Super hunter, Antidote+, Antifire, Ranging, Magic, Stamina, Zamorak brew, Antidote++, Bastion, Battlemage, Saradomin brew, Extended antifire, Ancient brew, Extended stamina, Anti-venom, Menaphite remedy, Armadyl brew, Super combat, Forgotten brew, Super antifire, Anti-venom+, Extended anti-venom+, Extended super antifire, and the divine potions (super attack, strength, defence, combat, ranging, magic, bastion and battlemage).
 
 ## Herb run
 
 Click **Herb run** at the top of the panel.
 
-- **Seeds:** pick a herb, and optionally limpwurt for flower patches and snape grass for allotments. Each dropdown shows how many seeds you have.
-- **Patches:** all ten herb patches. Ones you can't reach yet (quests, the Morytania elite diary, 65 Farming for the guild) are skipped and say why. With RuneLite's **Time Tracking** plugin on, each patch shows Ready, Diseased, Dead, Empty or how long is left, and patches still growing are left out of the run.
-- **Teleports:** each patch picks the best one you can use: unlimited items first, then house portals, fairy rings and spells, then tablets. Click it to choose another. Spells check your spellbook, Magic level and runes for the whole run, counting the rune pouch, combination runes, staves and tomes. Tablets are budgeted the same way.
-- **Supplies:** have / need for seeds, compost, tools and runes. The tool leprechaun's storage is read from the game, so tools, compost and a bottomless bucket kept there aren't asked for from the bank. The bucket's uses are tracked from the leprechaun, Check and each use, and the rake only appears if a patch needs raking (none at all with Tithe Farm's Auto-weed on).
-- **Harvest:** what you can expect from the run, and what it adds to your potions. Herbs use your Farming level, compost, magic secateurs, Farming cape, diaries and disease risk. Snape grass uses its own chance to save, compost and secateurs. Limpwurt is 3 roots plus a bonus that grows with Farming level. The wiki doesn't know disease rates for allotments and flowers, so those assume the crop survives.
+- **Seeds:** pick a herb (huasca included), and optionally limpwurt for flower patches and snape grass for allotments. Each dropdown shows how many seeds you have, counting the seed vault and a seed box.
+- **Patches:** all ten herb patches. Drag a patch by its handle (or right-click it) to change the run order. Ones you can't reach yet (quests, the Morytania elite diary, 65 Farming for the guild) are skipped and say why. With RuneLite's **Time Tracking** plugin on, each patch shows Ready, Diseased, Dead, Empty or how long is left, and patches still growing are left out of the run.
+- **Teleports:** each patch picks the best one you can use: unlimited items first, then house portals, fairy rings and spells, then tablets. Click it to choose another. House portals work with a house tablet, a Construction or Max cape, or the Teleport to House spell. Items you don't have yet say where they come from. Daily-limited tiers (Ardougne cloak 2 and 3, Explorer's ring 2, Morytania legs 1 to 3) count today's uses and fall back to the next option once they're used up. Hosidius can use the Tithe Farm Grouping teleport when it's off cooldown. Spells check your spellbook, Magic level and runes for the whole run, counting the rune pouch, combination runes, staves and tomes. Tablets are budgeted the same way.
+- **Supplies:** have / need for seeds, compost, tools and runes. The tool leprechaun's storage is read from the game, so tools, compost and a bottomless bucket kept there aren't asked for from the bank. Not enough of one compost? The best kind is used first and topped up with the next. A patch Time Tracking saw diseased adds a plant cure. Magic secateurs left at the leprechaun get a reminder to take them out, since they only work worn or carried. The bucket's uses are tracked from the leprechaun, Check and each use, and the rake only appears if a patch needs raking (none at all with Tithe Farm's Auto-weed on).
+- **Harvest:** what you can expect from the run, and what it adds to your potions. Herbs use the OSRS Wiki's formula with your Farming level, compost, magic secateurs, Farming cape, Kandarin and Kourend diaries, attas (read when you're in the Farming Guild) and disease risk (none at Troll Stronghold, Weiss, Harmony, Hosidius with the Kourend easy diary, or Civitas illa Fortis with 16,000 Colosseum glory). Snape grass uses its own chance to save, compost and secateurs. Limpwurt is 3 roots plus a bonus that grows with Farming level. The wiki doesn't know disease rates for allotments and flowers, so those assume the crop survives.
 
 **Show in bank** lays out the run: tools and compost, seeds, runes, then teleports in run order, with your saved gear on the left. Run items you can wear (magic secateurs, Ardougne cloak, Xeric's talisman, Explorer's ring and so on) go in any equipment slot your saved gear leaves free. Each item shows how many you still need to withdraw. The count goes down as you take things, including runes in a rune pouch, and disappears when you have enough.
 
-**Start run** guides you patch by patch. The panel lists each stop with its teleport and the option to pick, then a short status for each plot: Pick, Clear, Cure, Rake, Plant + compost, Plant, Compost or Done. Compost and seed can go on in either order, and compost at the leprechaun counts. A walking path is drawn on the ground and minimap, the game's farming icon marks the patch on the minimap and world map, and when you arrive every patch there with something left to do is outlined, in any order you like. Plots tick off as the game confirms planting and composting, and the run moves on once you leave a planted patch. If you run out of compost or seeds, the run carries on without them, and once your herb seeds are used up it only visits patches with something to pick or cure. The run stops itself after the last patch.
+**Start run** guides you patch by patch. The panel lists each stop with its teleport and the option to pick, then a short status for each plot: Pick, Clear, Cure, Rake, Plant + compost, Plant, Compost or Done. Compost and seed can go on in either order, and compost at the leprechaun counts. On the way, the teleport is highlighted wherever you use it: the item, the spell in your spellbook (or the Magic tab to open it), and the option to pick in its menu (jewellery, Xeric's talisman, spirit tree, portal nexus, quetzal whistle). A walking path is drawn on the ground and minimap, the game's farming icon marks the patch on the minimap and world map, and when you arrive every patch there with something left to do is outlined, in any order you like. A dead patch says "Clear or resurrect" when you can cast Resurrect Crops. Plots tick off as the game confirms planting and composting (with compost, a bottomless bucket or Fertile Soil), and the run moves on once you leave a planted patch. If you run out of compost or seeds, the run carries on without them, and once your herb seeds are used up it only visits patches with something to pick or cure. The run stops itself after the last patch and says how many herbs you picked. Logging out or disconnecting keeps the run for that account.
 
 ## Settings
 
 - **Bank column:** which column the rows line up to. 8 is the right-most.
 - **Skip growing patches:** leave patches that are still growing out of the herb run (on by default).
+- **Save runes:** pick teleports that cost no runes before spells.
 - **Herb run travel:** things the plugin can't see from the game: house portals (including the portal nexus), a mounted Xeric's talisman and spirit trees you've grown. Portal chamber portals are also picked up when you visit your own house.
 
 ## Notes

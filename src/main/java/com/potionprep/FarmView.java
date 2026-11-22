@@ -45,6 +45,12 @@ class FarmView extends JPanel
 	private final Map<Patch, JCheckBox> patchBoxes = new EnumMap<>(Patch.class);
 	private final Map<Patch, JLabel> patchTeleports = new EnumMap<>(Patch.class);
 	private final Map<Patch, JLabel> patchStates = new EnumMap<>(Patch.class);
+	/** Patch rows in run order; the player drags them by the grip to reorder. */
+	private final JPanel patchList = new JPanel();
+	private final Map<Patch, JPanel> patchRows = new EnumMap<>(Patch.class);
+	private java.util.List<Patch> viewOrder = new java.util.ArrayList<>(java.util.Arrays.asList(Patch.values()));
+	/** The patch being dragged, or null. */
+	private Patch dragging;
 	private final JPanel suppliesPanel = new JPanel();
 	private final JPanel stepsPanel = new JPanel();
 	private final JLabel statusLabel = new JLabel();
@@ -59,6 +65,10 @@ class FarmView extends JPanel
 	private final JLabel harvestSub = new JLabel();
 	/** Seeds you have (bank, inventory, seed vault) and your Farming level, for the dropdowns. */
 	private Map<Integer, Integer> seedCounts = java.util.Collections.emptyMap();
+	/** Patches on the run of each kind, to colour seed counts by whether they're enough. */
+	private int herbsOnRun;
+	private int flowersOnRun;
+	private int allotmentsOnRun;
 	private int farmingLevel;
 	/** Set while the plugin pushes state, so listeners don't echo it back. */
 	private boolean updating;
@@ -130,11 +140,15 @@ class FarmView extends JPanel
 		add(Box.createVerticalStrut(10));
 
 		add(left(heading("Patches")));
+		patchList.setLayout(new BoxLayout(patchList, BoxLayout.Y_AXIS));
+		patchList.setOpaque(false);
+		patchList.setAlignmentX(LEFT_ALIGNMENT);
 		for (Patch p : Patch.values())
 		{
-			add(stretch(patchRow(p)));
-			add(Box.createVerticalStrut(2));
+			patchRows.put(p, stretch(patchRow(p)));
 		}
+		layoutPatches();
+		add(patchList);
 		add(Box.createVerticalStrut(8));
 
 		add(left(heading("Supplies")));
@@ -158,6 +172,23 @@ class FarmView extends JPanel
 		Map<Integer, Integer> seedCounts, int farmingLevel)
 	{
 		this.seedCounts = seedCounts;
+		if (dragging == null && !settings.getOrder().equals(viewOrder))
+		{
+			viewOrder = new java.util.ArrayList<>(settings.getOrder());
+			layoutPatches();
+		}
+		herbsOnRun = 0;
+		flowersOnRun = 0;
+		allotmentsOnRun = 0;
+		for (FarmPlan.Stop st : plan.getStops())
+		{
+			if (!st.isLocked() && !st.isGrowing())
+			{
+				herbsOnRun++;
+				flowersOnRun += st.getPatch().isFlower() ? 1 : 0;
+				allotmentsOnRun += st.getPatch().getAllotments();
+			}
+		}
 		this.farmingLevel = farmingLevel;
 		herb.repaint();
 		flower.repaint();
@@ -367,6 +398,49 @@ class FarmView extends JPanel
 		}
 	}
 
+	private void layoutPatches()
+	{
+		patchList.removeAll();
+		for (Patch p : viewOrder)
+		{
+			patchList.add(patchRows.get(p));
+			patchList.add(Box.createVerticalStrut(2));
+		}
+		patchList.revalidate();
+		patchList.repaint();
+	}
+
+	/** Move a patch to a place in the run order (as shown), live while dragging. */
+	private void movePatch(Patch p, int to)
+	{
+		int from = viewOrder.indexOf(p);
+		to = Math.max(0, Math.min(viewOrder.size() - 1, to));
+		if (from == to)
+		{
+			return;
+		}
+		viewOrder.remove(p);
+		viewOrder.add(to, p);
+		layoutPatches();
+	}
+
+	/** Six dots: the handle you drag a patch row by. */
+	private static javax.swing.Icon grip()
+	{
+		java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(7, 11, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+		java.awt.Graphics2D g = img.createGraphics();
+		g.setColor(ColorScheme.MEDIUM_GRAY_COLOR);
+		for (int x = 0; x < 2; x++)
+		{
+			for (int y = 0; y < 3; y++)
+			{
+				g.fillRect(x * 4, y * 4, 3, 3);
+			}
+		}
+		g.dispose();
+		return new javax.swing.ImageIcon(img);
+	}
+
 	private JPanel patchRow(Patch p)
 	{
 		JPanel row = new JPanel(new BorderLayout(4, 0));
@@ -389,6 +463,62 @@ class FarmView extends JPanel
 		JPanel top = new JPanel(new BorderLayout());
 		top.setOpaque(false);
 		top.add(box, BorderLayout.CENTER);
+		JLabel handle = new JLabel(grip());
+		handle.setBorder(new EmptyBorder(0, 0, 0, 2));
+		handle.setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
+		handle.setToolTipText("Drag to change the run order");
+		MouseAdapter drag = new MouseAdapter()
+		{
+			@Override
+			public void mousePressed(MouseEvent e)
+			{
+				dragging = p;
+			}
+
+			@Override
+			public void mouseDragged(MouseEvent e)
+			{
+				java.awt.Point at = javax.swing.SwingUtilities.convertPoint(handle, e.getPoint(), patchList);
+				int to = viewOrder.size() - 1;
+				for (int i = 0; i < viewOrder.size(); i++)
+				{
+					java.awt.Rectangle r = patchRows.get(viewOrder.get(i)).getBounds();
+					if (at.y < r.y + r.height / 2)
+					{
+						to = i;
+						break;
+					}
+				}
+				movePatch(p, to);
+			}
+
+			@Override
+			public void mouseReleased(MouseEvent e)
+			{
+				dragging = null;
+				plugin.setPatchOrder(new java.util.ArrayList<>(viewOrder));
+			}
+		};
+		handle.addMouseListener(drag);
+		handle.addMouseMotionListener(drag);
+		top.add(handle, BorderLayout.WEST);
+		javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
+		javax.swing.JMenuItem up = new javax.swing.JMenuItem("Move up");
+		up.addActionListener(e ->
+		{
+			movePatch(p, viewOrder.indexOf(p) - 1);
+			plugin.setPatchOrder(new java.util.ArrayList<>(viewOrder));
+		});
+		javax.swing.JMenuItem down = new javax.swing.JMenuItem("Move down");
+		down.addActionListener(e ->
+		{
+			movePatch(p, viewOrder.indexOf(p) + 1);
+			plugin.setPatchOrder(new java.util.ArrayList<>(viewOrder));
+		});
+		menu.add(up);
+		menu.add(down);
+		box.setComponentPopupMenu(menu);
+		handle.setComponentPopupMenu(menu);
 		JLabel state = new JLabel(" ");
 		state.setFont(FontManager.getRunescapeSmallFont());
 		patchStates.put(p, state);
@@ -411,7 +541,7 @@ class FarmView extends JPanel
 		}
 		// Teleport names are long, so they go on their own line under the patch.
 		tele.setHorizontalAlignment(SwingConstants.LEFT);
-		tele.setBorder(new EmptyBorder(0, 22, 2, 0));
+		tele.setBorder(new EmptyBorder(0, 31, 2, 0));
 		patchTeleports.put(p, tele);
 		row.add(tele, BorderLayout.SOUTH);
 		return row;
@@ -495,6 +625,7 @@ class FarmView extends JPanel
 			Farm.Seed seed = (Farm.Seed) value;
 			String right;
 			String color;
+			String tip = "Needs " + seed.getLevel() + " Farming";
 			if (farmingLevel > 0 && farmingLevel < seed.getLevel())
 			{
 				right = "Lv " + seed.getLevel();
@@ -504,10 +635,19 @@ class FarmView extends JPanel
 			{
 				int n = seedCounts.getOrDefault(seed.getSeedId(), 0);
 				right = QuantityFormatter.quantityToStackSize(n);
-				color = n > 0 ? "#5FBF5F" : "#808080";
+				// Red: not enough to plant one patch. Orange: not enough for every patch on the run.
+				int per = seed instanceof Farm.AllotmentSeed ? Farm.SEEDS_PER_ALLOTMENT : 1;
+				int need = seed instanceof Farm.AllotmentSeed ? allotmentsOnRun * Farm.SEEDS_PER_ALLOTMENT
+					: seed instanceof Farm.FlowerSeed ? flowersOnRun : herbsOnRun;
+				color = n == 0 ? "#808080" : n < per ? "#E05A5A" : n < need ? "#FFB000" : "#5FBF5F";
+				if (need > 0)
+				{
+					tip += ". " + need + " for every patch on the run"
+						+ (per > 1 ? ", " + per + " per allotment" : "");
+				}
 			}
 			l.setText("<html>" + seed.getName() + "&nbsp;&nbsp;<font color='" + color + "'>" + right + "</font></html>");
-			l.setToolTipText("Needs " + seed.getLevel() + " Farming");
+			l.setToolTipText(tip);
 			return l;
 		}
 	}
