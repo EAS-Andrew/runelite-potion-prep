@@ -84,6 +84,9 @@ public final class FarmPlan
 		Set<String> spiritTrees = Collections.emptySet();
 		/** Your house has a spirit tree (reach spirit trees via your house). */
 		boolean spiritHouse;
+		/** Flower and allotment varbit values per patch from Time Tracking ({flower, allotment 1, allotment 2}, -1 unknown). */
+		@Builder.Default
+		Map<Patch, int[]> sidePlots = Collections.emptyMap();
 		/** What each patch is doing, from Time Tracking; missing means unknown. */
 		@Builder.Default
 		Map<Patch, PatchStatus> patchStatus = Collections.emptyMap();
@@ -152,6 +155,11 @@ public final class FarmPlan
 		PatchStatus status;
 		/** Left out of this run because it's still growing. */
 		boolean growing;
+		/** The herb is growing but the flower or allotments here are empty: visit for those only. */
+		boolean sideOnly;
+		/** Plots to do here besides the herb. */
+		boolean flowerToDo;
+		int allotmentsToDo;
 
 		public boolean isLocked()
 		{
@@ -280,7 +288,18 @@ public final class FarmPlan
 			PatchStatus status = acct.getPatchStatus().get(p);
 			boolean growing = lock == null && acct.isSkipGrowing() && status != null
 				&& status.getState() == PatchStatus.State.GROWING;
-			stops.add(new Stop(p, pick, id, problem == null, manual != null, lock, auto, problem, status, growing));
+			// Flower and allotments come with the herb. When the herb is still growing, the
+			// location is still worth a visit for any of them that isn't growing too.
+			int[] side = acct.getSidePlots().get(p);
+			boolean flowerToDo = p.isFlower() && s.getFlower() != FlowerSeed.NONE && (!growing || sideEmpty(side, 0));
+			int allotmentsToDo = 0;
+			for (int i = 0; s.getAllotment() != Farm.AllotmentSeed.NONE && i < p.getAllotments(); i++)
+			{
+				allotmentsToDo += !growing || sideEmpty(side, 1 + i) ? 1 : 0;
+			}
+			boolean sideOnly = growing && (flowerToDo || allotmentsToDo > 0);
+			stops.add(new Stop(p, pick, id, problem == null, manual != null, lock, auto, problem, status, growing,
+				sideOnly, flowerToDo, allotmentsToDo));
 
 			if (lock != null)
 			{
@@ -289,8 +308,11 @@ public final class FarmPlan
 			if (growing)
 			{
 				nextReady = nextReady == 0 ? status.getReadyAt() : Math.min(nextReady, status.getReadyAt());
-				skipped++;
-				continue;
+				if (!sideOnly)
+				{
+					skipped++;
+					continue;
+				}
 			}
 			// Commit what this teleport uses so later patches see what's left. A
 			// spell's runes are listed even when short, so you know what to get.
@@ -307,7 +329,7 @@ public final class FarmPlan
 			{
 				tabletsUsed.merge(id, 1, Integer::sum);
 			}
-			if (lock == null && !growing && pick != null && pick.getSpell() == null && id != -1 && Farm.consumable(id))
+			if (lock == null && (!growing || sideOnly) && pick != null && pick.getSpell() == null && id != -1 && Farm.consumable(id))
 			{
 				tabletsNeeded.merge(id, 1, Integer::sum);
 			}
@@ -316,10 +338,13 @@ public final class FarmPlan
 				steps.add(new Step(Severity.WARNING, p.getName() + ": " + (problem != null ? lowerFirst(problem) : "no teleport"),
 					options(p)));
 			}
-			herbPatches++;
-			planted.add(p);
-			flowerPatches += p.isFlower() ? 1 : 0;
-			allotments += p.getAllotments();
+			if (!sideOnly)
+			{
+				herbPatches++;
+				planted.add(p);
+			}
+			flowerPatches += flowerToDo ? 1 : 0;
+			allotments += allotmentsToDo;
 		}
 
 		// --- Supplies ---
@@ -458,7 +483,7 @@ public final class FarmPlan
 		for (Stop st : stops)
 		{
 			// Locked or still-growing patches aren't on this run.
-			if (!st.isLocked() && !st.isGrowing() && st.getItemId() != -1)
+			if (!st.isLocked() && (!st.isGrowing() || st.isSideOnly()) && st.getItemId() != -1)
 			{
 				teleIds.add(st.getItemId());
 			}
@@ -562,6 +587,25 @@ public final class FarmPlan
 	{
 		long m = Math.max(1, (seconds + 59) / 60);
 		return m >= 60 ? (m / 60) + "h " + (m % 60) + "m" : m + "m";
+	}
+
+	/**
+	 * A flower or allotment plot with something to do: Time Tracking saw it,
+	 * and it isn't limpwurt or snape grass still growing (so it's empty,
+	 * ready to pick, diseased or dead).
+	 */
+	private static boolean sideEmpty(int[] side, int index)
+	{
+		if (side == null || index >= side.length || side[index] < 0)
+		{
+			return false;
+		}
+		int v = side[index];
+		// Time Tracking's PatchImplementation: limpwurt grows at 28-31 and 92-95 (flower),
+		// snape grass at 63-69 and 128-134 (allotment).
+		boolean growing = index == 0 ? v >= 28 && v <= 31 || v >= 92 && v <= 95
+			: v >= 63 && v <= 69 || v >= 128 && v <= 134;
+		return !growing;
 	}
 
 	/** Catherby's chance-to-save bonus by Kandarin diary tier (none, medium, hard, elite), out of 256. */

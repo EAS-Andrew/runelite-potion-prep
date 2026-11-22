@@ -247,4 +247,28 @@ public class HerbRunTest
 		r.onMessage("The herb patch has been treated with supercompost.");
 		assertTrue(r.finished() || r.current().getPatch() != first);
 	}
+
+	@Test
+	public void emptyAllotmentsBringYouBackWhileTheHerbGrows()
+	{
+		FarmPlan.Settings s = FarmPlan.Settings.builder().herb(HerbSeed.RANARR).flower(FlowerSeed.NONE)
+			.allotment(AllotmentSeed.SNAPE_GRASS).patches(EnumSet.of(Patch.HOSIDIUS, Patch.FALADOR))
+			.overrides(Collections.emptyMap()).build();
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.RANARR_SEED, 5);
+		bank.put(ItemID.SNAPE_GRASS_SEED, 12);
+		Map<Patch, PatchStatus> status = new java.util.EnumMap<>(Patch.class);
+		status.put(Patch.HOSIDIUS, new PatchStatus(PatchStatus.State.GROWING, Long.MAX_VALUE));
+		status.put(Patch.FALADOR, new PatchStatus(PatchStatus.State.GROWING, Long.MAX_VALUE));
+		Map<Patch, int[]> side = new java.util.EnumMap<>(Patch.class);
+		side.put(Patch.HOSIDIUS, new int[]{-1, 3, 138}); // one empty, one snape grass ready to pick
+		side.put(Patch.FALADOR, new int[]{-1, 130, 65}); // both snape grass growing
+		FarmPlan plan = FarmPlan.compute(s, bank, new HashSet<>(),
+			FarmPlan.Account.builder().farming(99).patchStatus(status).sidePlots(side).build());
+		HerbRun r = HerbRun.from(plan, s, 0);
+		assertEquals(1, r.getStops().size());
+		assertEquals(Patch.HOSIDIUS, r.getStops().get(0).getPatch());
+		assertEquals(2, r.getStops().get(0).getPlots().size());
+		assertFalse(r.getStops().get(0).hasHerb());
+	}
 }

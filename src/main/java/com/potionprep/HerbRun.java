@@ -146,7 +146,7 @@ public class HerbRun
 		List<Stop> stops = new ArrayList<>();
 		for (FarmPlan.Stop st : plan.getStops())
 		{
-			if (st.isLocked() || st.isGrowing())
+			if (st.isLocked() || st.isGrowing() && !st.isSideOnly())
 			{
 				continue;
 			}
@@ -154,7 +154,13 @@ public class HerbRun
 			List<Plot> plots = new ArrayList<>();
 			Plot herb = new Plot(PlotType.HERB, settings.getHerb().getName() + " seed");
 			plots.add(herb);
-			if (herbSeeds >= 1)
+			if (st.isSideOnly())
+			{
+				// The herb is still growing: only the empty flower or allotments here.
+				herb.noSeeds = true;
+				herb.harvestOnly = true;
+			}
+			else if (herbSeeds >= 1)
 			{
 				herbSeeds--;
 			}
@@ -163,16 +169,16 @@ public class HerbRun
 				herb.noSeeds = true;
 				herb.harvestOnly = true;
 			}
-			boolean herbWorthIt = !herb.harvestOnly || worthPicking(st.getStatus());
+			boolean herbWorthIt = !st.isSideOnly() && (!herb.harvestOnly || worthPicking(st.getStatus()));
 			List<Plot> others = new ArrayList<>();
-			if (p.isFlower() && settings.getFlower() != Farm.FlowerSeed.NONE && flowerSeeds >= 1)
+			if (st.isFlowerToDo() && flowerSeeds >= 1)
 			{
 				flowerSeeds--;
 				others.add(new Plot(PlotType.FLOWER, settings.getFlower().getName() + " seed"));
 			}
 			if (settings.getAllotment() != Farm.AllotmentSeed.NONE)
 			{
-				for (int i = 0; i < p.getAllotments() && allotSeeds >= Farm.SEEDS_PER_ALLOTMENT; i++)
+				for (int i = 0; i < st.getAllotmentsToDo() && allotSeeds >= Farm.SEEDS_PER_ALLOTMENT; i++)
 				{
 					allotSeeds -= Farm.SEEDS_PER_ALLOTMENT;
 					others.add(new Plot(PlotType.ALLOTMENT, settings.getAllotment().getName() + " seeds"));
@@ -184,7 +190,16 @@ public class HerbRun
 				// No seed and nothing growing to pick: nothing to do here.
 				continue;
 			}
-			if (apart != null && !others.isEmpty())
+			if (st.isSideOnly())
+			{
+				if (others.isEmpty())
+				{
+					continue;
+				}
+				stops.add(new Stop(p, p.getName() + (apart != null ? " allotments" : ""), apart != null ? apart : PatchPlaces.point(p),
+					st.getTeleport(), st.getItemId(), others));
+			}
+			else if (apart != null && !others.isEmpty())
 			{
 				// The flower and allotments here are a walk from the herb patch: their own stop.
 				if (herbWorthIt)

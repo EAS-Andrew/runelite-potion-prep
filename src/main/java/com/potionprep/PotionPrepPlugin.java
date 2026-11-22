@@ -170,6 +170,16 @@ public class PotionPrepPlugin extends Plugin
 		ObjectID.FARMING_HERB_PATCH_4, ObjectID.FARMING_HERB_PATCH_5, ObjectID.FARMING_HERB_PATCH_6,
 		ObjectID.MYARM_HERBPATCH));
 
+	/** Allotment and flower patch objects; planted, they show as the crop, so the name can't be relied on. */
+	private static final Set<Integer> ALLOTMENT_OBJECTS = new HashSet<>(Arrays.asList(
+		ObjectID.FARMING_VEG_PATCH_1, ObjectID.FARMING_VEG_PATCH_2, ObjectID.FARMING_VEG_PATCH_3,
+		ObjectID.FARMING_VEG_PATCH_4, ObjectID.FARMING_VEG_PATCH_5, ObjectID.FARMING_VEG_PATCH_6,
+		ObjectID.FARMING_VEG_PATCH_7, ObjectID.FARMING_VEG_PATCH_8, ObjectID.FARMING_VEG_PATCH_9,
+		ObjectID.FARMING_VEG_PATCH_10, ObjectID.FARMING_VEG_PATCH_11));
+	private static final Set<Integer> FLOWER_OBJECTS = new HashSet<>(Arrays.asList(
+		ObjectID.FARMING_FLOWER_PATCH_1, ObjectID.FARMING_FLOWER_PATCH_2, ObjectID.FARMING_FLOWER_PATCH_3,
+		ObjectID.FARMING_FLOWER_PATCH_4, ObjectID.FARMING_FLOWER_PATCH_5));
+
 	/** The herb run being guided, or null. */
 	private HerbRun run;
 	/** At the run's current stop (near its patch). */
@@ -252,6 +262,7 @@ public class PotionPrepPlugin extends Plugin
 			lastLayout = null;
 			invCounts.clear();
 			herbPatches.clear();
+			patchVarbits.clear();
 		});
 	}
 
@@ -639,7 +650,7 @@ public class PotionPrepPlugin extends Plugin
 			if (from != null && maps != null && maps[wv.getPlane()] != null)
 			{
 				int[][] flags = maps[wv.getPlane()].getFlags();
-				net.runelite.api.GameObject patch = stop.hasHerb() ? herbPatchNear(stop.getPoint()) : null;
+				net.runelite.api.GameObject patch = stop.hasHerb() ? herbPatchNear(stop.getPatch(), stop.getPoint()) : nearestToDo(stop, me);
 				net.runelite.api.coords.LocalPoint to = patch == null
 					? net.runelite.api.coords.LocalPoint.fromWorld(wv, stop.getPoint()) : null;
 				// The search is only redone when you, the target or the loaded area moves.
@@ -756,10 +767,9 @@ public class PotionPrepPlugin extends Plugin
 					}
 					for (net.runelite.api.GameObject o : tile.getGameObjects())
 					{
-						HerbRun.PlotType type = o != null ? patchType(o.getId()) : null;
-						if (type != null)
+						if (o != null)
 						{
-							herbPatches.put(o, type);
+							track(o);
 						}
 					}
 				}
@@ -802,6 +812,14 @@ public class PotionPrepPlugin extends Plugin
 		{
 			return HerbRun.PlotType.HERB;
 		}
+		if (ALLOTMENT_OBJECTS.contains(id))
+		{
+			return HerbRun.PlotType.ALLOTMENT;
+		}
+		if (FLOWER_OBJECTS.contains(id))
+		{
+			return HerbRun.PlotType.FLOWER;
+		}
 		if (notPatches.contains(id))
 		{
 			return null;
@@ -828,16 +846,88 @@ public class PotionPrepPlugin extends Plugin
 		return now != null ? patchName(now.getName()) : null;
 	}
 
+	/** The farming varbit each patch object shows (its impostor varbit), for patches found that way. */
+	private final Map<net.runelite.api.GameObject, Integer> patchVarbits = new HashMap<>();
+	private final Map<Integer, Integer> transmitIds = new HashMap<>();
+
+	/** Remember a patch object: by its farming varbit, or failing that its id or name. */
+	private void track(net.runelite.api.GameObject o)
+	{
+		int id = o.getId();
+		HerbRun.PlotType type = patchType(id);
+		int varbit = transmitIds.computeIfAbsent(id, i ->
+		{
+			net.runelite.api.ObjectComposition def = notPatches.contains(i) ? null : client.getObjectDefinition(i);
+			int v = def != null && def.getImpostorIds() != null ? def.getVarbitId() : -1;
+			return v >= VarbitID.FARMING_TRANSMIT_A && v <= VarbitID.FARMING_TRANSMIT_E
+				|| v >= VarbitID.FARMING_TRANSMIT_F && v <= VarbitID.FARMING_TRANSMIT_N ? v : -1;
+		});
+		if (type != null || varbit != -1)
+		{
+			herbPatches.put(o, type);
+			if (varbit != -1)
+			{
+				patchVarbits.put(o, varbit);
+			}
+		}
+	}
+
+	/**
+	 * What an object is at a location: from the varbit it shows when known
+	 * (every patch has its own), else from its id or name.
+	 */
+	private HerbRun.PlotType typeAt(net.runelite.api.GameObject o, Farm.Patch patch)
+	{
+		Integer v = patchVarbits.get(o);
+		if (v == null)
+		{
+			return herbPatches.get(o);
+		}
+		if (v == PatchStatus.varbit(patch))
+		{
+			return HerbRun.PlotType.HERB;
+		}
+		int[] side = PatchStatus.sideVarbits(patch);
+		if (side.length > 0 && v == side[0])
+		{
+			return HerbRun.PlotType.FLOWER;
+		}
+		for (int i = 1; i < side.length; i++)
+		{
+			if (v == side[i])
+			{
+				return HerbRun.PlotType.ALLOTMENT;
+			}
+		}
+		return null;
+	}
+
 	/** The loaded herb patch object closest to a point, within 15 tiles; null if none. */
-	private net.runelite.api.GameObject herbPatchNear(net.runelite.api.coords.WorldPoint at)
+	private net.runelite.api.GameObject herbPatchNear(Farm.Patch patch, net.runelite.api.coords.WorldPoint at)
 	{
 		net.runelite.api.GameObject best = null;
 		int bestDist = 16;
-		for (Map.Entry<net.runelite.api.GameObject, HerbRun.PlotType> e : herbPatches.entrySet())
+		for (net.runelite.api.GameObject o : herbPatches.keySet())
 		{
-			net.runelite.api.GameObject o = e.getKey();
 			int d = o.getWorldLocation().distanceTo2D(at);
-			if (e.getValue() == HerbRun.PlotType.HERB && o.getPlane() == at.getPlane() && d < bestDist)
+			if (typeAt(o, patch) == HerbRun.PlotType.HERB && o.getPlane() == at.getPlane() && d < bestDist)
+			{
+				best = o;
+				bestDist = d;
+			}
+		}
+		return best;
+	}
+
+	/** The closest patch at a stop that still needs doing (for stops without a herb), or null. */
+	private net.runelite.api.GameObject nearestToDo(HerbRun.Stop stop, net.runelite.api.Player me)
+	{
+		net.runelite.api.GameObject best = null;
+		int bestDist = Integer.MAX_VALUE;
+		for (net.runelite.api.GameObject o : toDo(stop))
+		{
+			int d = o.getWorldLocation().distanceTo2D(me.getWorldLocation());
+			if (d < bestDist)
 			{
 				best = o;
 				bestDist = d;
@@ -858,15 +948,15 @@ public class PotionPrepPlugin extends Plugin
 			}
 		}
 		List<net.runelite.api.GameObject> out = new ArrayList<>();
-		net.runelite.api.GameObject herb = left.contains(HerbRun.PlotType.HERB) ? herbPatchNear(stop.getPoint()) : null;
+		net.runelite.api.GameObject herb = left.contains(HerbRun.PlotType.HERB) ? herbPatchNear(stop.getPatch(), stop.getPoint()) : null;
 		if (herb != null)
 		{
 			out.add(herb);
 		}
-		for (Map.Entry<net.runelite.api.GameObject, HerbRun.PlotType> e : herbPatches.entrySet())
+		for (net.runelite.api.GameObject o : herbPatches.keySet())
 		{
-			net.runelite.api.GameObject o = e.getKey();
-			if (e.getValue() != HerbRun.PlotType.HERB && left.contains(e.getValue()) && o.getPlane() == stop.getPoint().getPlane()
+			HerbRun.PlotType type = typeAt(o, stop.getPatch());
+			if (type != null && type != HerbRun.PlotType.HERB && left.contains(type) && o.getPlane() == stop.getPoint().getPlane()
 				&& o.getWorldLocation().distanceTo2D(stop.getPoint()) <= 15)
 			{
 				out.add(o);
@@ -1305,6 +1395,7 @@ public class PotionPrepPlugin extends Plugin
 			.whistleCharges(savedCharges("whistleCharges"))
 			.xericCharges(savedCharges("xericCharges"))
 			.patchStatus(PatchStatus.read(configManager, java.time.Instant.now().getEpochSecond()))
+			.sidePlots(PatchStatus.readSide(configManager))
 			.skipGrowing(config.skipGrowing())
 			.saveRunes(config.saveRunes())
 			.now(java.time.Instant.now().getEpochSecond())
@@ -1373,11 +1464,7 @@ public class PotionPrepPlugin extends Plugin
 		{
 			inHouse = true;
 		}
-		HerbRun.PlotType type = patchType(id);
-		if (type != null)
-		{
-			herbPatches.put(event.getGameObject(), type);
-		}
+		track(event.getGameObject());
 		String portal = PORTAL_OBJECTS.get(id);
 		if (portal != null)
 		{
@@ -1392,6 +1479,7 @@ public class PotionPrepPlugin extends Plugin
 	public void onGameObjectDespawned(net.runelite.api.events.GameObjectDespawned event)
 	{
 		herbPatches.remove(event.getGameObject());
+		patchVarbits.remove(event.getGameObject());
 	}
 
 	@Subscribe
@@ -1933,6 +2021,7 @@ public class PotionPrepPlugin extends Plugin
 			inHouse = false;
 			housePortals.clear();
 			herbPatches.clear();
+			patchVarbits.clear();
 			pathKey = null;
 			walk = Collections.emptyList();
 			scenePath.set(walk);

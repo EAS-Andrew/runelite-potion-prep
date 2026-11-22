@@ -167,6 +167,55 @@ public class PatchStatus
 		KEYS.put(Patch.HARMONY, new int[]{15148, VarbitID.FARMING_TRANSMIT_B});
 	}
 
+	/** Varbits of each location's {flower, allotment 1, allotment 2} (Time Tracking's FarmingWorld). */
+	private static final Map<Patch, int[]> SIDE = new EnumMap<>(Patch.class);
+
+	static
+	{
+		int[] usual = {VarbitID.FARMING_TRANSMIT_C, VarbitID.FARMING_TRANSMIT_A, VarbitID.FARMING_TRANSMIT_B};
+		for (Patch p : new Patch[]{Patch.HOSIDIUS, Patch.CIVITAS, Patch.ARDOUGNE, Patch.CATHERBY, Patch.FALADOR, Patch.MORYTANIA})
+		{
+			SIDE.put(p, usual);
+		}
+		SIDE.put(Patch.FARMING_GUILD, new int[]{VarbitID.FARMING_TRANSMIT_H, VarbitID.FARMING_TRANSMIT_C, VarbitID.FARMING_TRANSMIT_D});
+	}
+
+	/** A location's {flower, allotment 1, allotment 2} varbits, or empty where there are none. */
+	static int[] sideVarbits(Patch p)
+	{
+		int[] v = SIDE.get(p);
+		return v != null ? v : new int[0];
+	}
+
+	/** Flower and allotment values Time Tracking last saw, per location: {flower, allotment 1, allotment 2}, -1 unknown. */
+	static Map<Patch, int[]> readSide(ConfigManager config)
+	{
+		Map<Patch, int[]> out = new EnumMap<>(Patch.class);
+		SIDE.forEach((patch, varbits) ->
+		{
+			int region = KEYS.get(patch)[0];
+			int[] values = new int[varbits.length];
+			for (int i = 0; i < varbits.length; i++)
+			{
+				values[i] = -1;
+				String stored = config.getRSProfileConfiguration("timetracking", region + "." + varbits[i]);
+				if (stored != null)
+				{
+					try
+					{
+						values[i] = Integer.parseInt(stored.split(":")[0]);
+					}
+					catch (NumberFormatException ignored)
+					{
+						// Unknown.
+					}
+				}
+			}
+			out.put(patch, values);
+		});
+		return out;
+	}
+
 	/** Every herb patch Time Tracking knows about, for the current account. */
 	static Map<Patch, PatchStatus> read(ConfigManager config, long now)
 	{

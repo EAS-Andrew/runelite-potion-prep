@@ -182,11 +182,11 @@ class FarmView extends JPanel
 		allotmentsOnRun = 0;
 		for (FarmPlan.Stop st : plan.getStops())
 		{
-			if (!st.isLocked() && !st.isGrowing())
+			if (!st.isLocked() && (!st.isGrowing() || st.isSideOnly()))
 			{
-				herbsOnRun++;
-				flowersOnRun += st.getPatch().isFlower() ? 1 : 0;
-				allotmentsOnRun += st.getPatch().getAllotments();
+				herbsOnRun += st.isSideOnly() ? 0 : 1;
+				flowersOnRun += st.isFlowerToDo() ? 1 : 0;
+				allotmentsOnRun += st.getAllotmentsToDo();
 			}
 		}
 		this.farmingLevel = farmingLevel;
@@ -379,7 +379,8 @@ class FarmView extends JPanel
 			case GROWING:
 				l.setText(FarmPlan.minutes(st.getReadyAt() - now));
 				l.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
-				l.setToolTipText("Still growing" + (stop.isGrowing() ? ", left out of this run" : ""));
+				l.setToolTipText("Still growing" + (stop.isSideOnly() ? ", visited for the flower or allotments"
+					: stop.isGrowing() ? ", left out of this run" : ""));
 				break;
 			case DISEASED:
 				l.setText("Diseased");
