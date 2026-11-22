@@ -42,6 +42,8 @@ public class HerbRun
 		private PatchStatus.Task task;
 		/** Not enough seeds with you to plant it: it doesn't hold up the stop. */
 		private boolean noSeeds;
+		/** Planned without a seed (you ran out): only there to pick or cure what's growing. */
+		private boolean harvestOnly;
 
 		/** Seeds one planting uses. */
 		int seedsPer()
@@ -132,6 +134,8 @@ public class HerbRun
 	static HerbRun from(FarmPlan plan, FarmPlan.Settings settings, long now)
 	{
 		// Flowers and allotments only while the seeds last, in run order.
+		// Herbs too: once they run out, a patch is only worth the trip to pick or cure it.
+		int herbSeeds = seedsHave(plan, settings.getHerb().getSeedId());
 		int flowerSeeds = seedsHave(plan, settings.getFlower().getSeedId());
 		int allotSeeds = seedsHave(plan, settings.getAllotment().getSeedId());
 		List<Stop> stops = new ArrayList<>();
@@ -143,7 +147,18 @@ public class HerbRun
 			}
 			Patch p = st.getPatch();
 			List<Plot> plots = new ArrayList<>();
-			plots.add(new Plot(PlotType.HERB, settings.getHerb().getName() + " seed"));
+			Plot herb = new Plot(PlotType.HERB, settings.getHerb().getName() + " seed");
+			plots.add(herb);
+			if (herbSeeds >= 1)
+			{
+				herbSeeds--;
+			}
+			else
+			{
+				herb.noSeeds = true;
+				herb.harvestOnly = true;
+			}
+			boolean herbWorthIt = !herb.harvestOnly || worthPicking(st.getStatus());
 			List<Plot> others = new ArrayList<>();
 			if (p.isFlower() && settings.getFlower() != Farm.FlowerSeed.NONE && flowerSeeds >= 1)
 			{
@@ -159,11 +174,20 @@ public class HerbRun
 				}
 			}
 			net.runelite.api.coords.WorldPoint apart = PatchPlaces.otherPlots(p);
+			if (!herbWorthIt && others.isEmpty())
+			{
+				// No seed and nothing growing to pick: nothing to do here.
+				continue;
+			}
 			if (apart != null && !others.isEmpty())
 			{
 				// The flower and allotments here are a walk from the herb patch: their own stop.
-				stops.add(new Stop(p, p.getName(), PatchPlaces.point(p), st.getTeleport(), st.getItemId(), plots));
-				stops.add(new Stop(p, p.getName() + " allotments", apart, null, -1, others));
+				if (herbWorthIt)
+				{
+					stops.add(new Stop(p, p.getName(), PatchPlaces.point(p), st.getTeleport(), st.getItemId(), plots));
+				}
+				stops.add(new Stop(p, p.getName() + " allotments", apart, herbWorthIt ? null : st.getTeleport(),
+					herbWorthIt ? -1 : st.getItemId(), others));
 			}
 			else
 			{
@@ -173,6 +197,26 @@ public class HerbRun
 		}
 		boolean compost = plan.getSupplies().stream().anyMatch(s -> isCompost(s.getItemId()) && s.getHave() > 0);
 		return new HerbRun(stops, compost, now);
+	}
+
+	/**
+	 * Without a seed, a herb patch is still worth visiting if something's
+	 * growing there to pick or cure, or if we don't know what it's doing.
+	 */
+	static boolean worthPicking(PatchStatus status)
+	{
+		if (status == null)
+		{
+			return true;
+		}
+		switch (status.getState())
+		{
+			case EMPTY:
+			case DEAD:
+				return false;
+			default:
+				return true;
+		}
 	}
 
 	/** Seeds you have of a kind (bank, inventory, seed vault), from the plan. */
@@ -414,7 +458,12 @@ public class HerbRun
 	{
 		if (p.noSeeds && !p.planted)
 		{
-			return "No seeds";
+			if (p.task == PatchStatus.Task.CURE)
+			{
+				return "Cure";
+			}
+			// Ran out before this patch: it's here for the pick, if there is one.
+			return p.harvestOnly && (p.task == null || p.task == PatchStatus.Task.PICK) ? "Pick" : "No seeds";
 		}
 		if (!p.planted && p.task != null)
 		{

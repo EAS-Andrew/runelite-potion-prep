@@ -69,4 +69,30 @@ public class GearTest
 		assertArrayEquals(new int[]{-1, ItemID.GRACEFUL_LEGS, -1}, rows.get(3));
 		assertArrayEquals(new int[]{ItemID.GRACEFUL_GLOVES, ItemID.GRACEFUL_BOOTS, -1}, rows.get(4));
 	}
+
+	@Test
+	public void runItemsGoInFreeSlotsAfterSavedGear()
+	{
+		// Slots: 1 cape, 2 neck, 3 weapon, 12 ring.
+		java.util.Map<Integer, Integer> slot = new HashMap<>();
+		slot.put(100, 3); // magic secateurs
+		slot.put(200, 1); // Ardougne cloak
+		slot.put(300, 2); // skills necklace
+		slot.put(301, 2); // Xeric's talisman (neck taken by then)
+		slot.put(400, 12); // Explorer's ring
+		int[] saved = new int[14];
+		java.util.Arrays.fill(saved, -1);
+		saved[1] = 900; // graceful cape: saved gear keeps the cape slot
+		java.util.List<int[]> rows = java.util.Arrays.asList(
+			new int[]{10, 11, 100}, // rake, spade, secateurs
+			new int[]{300, 301, 200, 400, 50}); // teleports in run order, 50 a tablet
+		Gear.Worn w = Gear.wear(saved, rows, id -> slot.getOrDefault(id, -1));
+		assertEquals(900, w.slots[1]);
+		assertEquals(300, w.slots[2]);
+		assertEquals(100, w.slots[3]);
+		assertEquals(400, w.slots[12]);
+		assertEquals(2, w.rows.size());
+		org.junit.Assert.assertArrayEquals(new int[]{10, 11}, w.rows.get(0));
+		org.junit.Assert.assertArrayEquals(new int[]{301, 200, 50}, w.rows.get(1));
+	}
 }

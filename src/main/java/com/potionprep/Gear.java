@@ -183,4 +183,73 @@ final class Gear
 		}
 		return out;
 	}
+
+	/** Saved gear plus run items that can be worn, and the layout rows without those items. */
+	static final class Worn
+	{
+		/** Item id per equipment slot index, -1 for empty. */
+		final int[] slots;
+		final List<int[]> rows;
+
+		Worn(int[] slots, List<int[]> rows)
+		{
+			this.slots = slots;
+			this.rows = rows;
+		}
+	}
+
+	/**
+	 * Wear what can be worn: each item in the rows (in order, so tools, then
+	 * teleports in run order) moves into its equipment slot if that slot is
+	 * still free. The player's saved gear keeps its slots, and an item whose
+	 * slot is taken stays in its row.
+	 *
+	 * @param saved  saved gear per slot, or null for none
+	 * @param slotOf equipment slot index for an item, or -1 if it can't be worn
+	 */
+	static Worn wear(int[] saved, List<int[]> rows, java.util.function.IntUnaryOperator slotOf)
+	{
+		int[] slots = new int[SLOT_POS.length];
+		java.util.Arrays.fill(slots, -1);
+		if (saved != null)
+		{
+			for (int i = 0; i < saved.length && i < slots.length; i++)
+			{
+				slots[i] = saved[i] > 0 ? saved[i] : -1;
+			}
+		}
+		java.util.Set<Integer> already = new java.util.HashSet<>();
+		for (int id : slots)
+		{
+			already.add(id);
+		}
+		List<int[]> out = new ArrayList<>();
+		for (int[] row : rows)
+		{
+			List<Integer> keep = new ArrayList<>();
+			for (int id : row)
+			{
+				if (already.contains(id))
+				{
+					// Already in the saved gear: shown there only.
+					continue;
+				}
+				int slot = id > 0 ? slotOf.applyAsInt(id) : -1;
+				if (slot >= 0 && slot < slots.length && SLOT_POS[slot] != null && slots[slot] == -1)
+				{
+					slots[slot] = id;
+					already.add(id);
+				}
+				else
+				{
+					keep.add(id);
+				}
+			}
+			if (!keep.isEmpty())
+			{
+				out.add(keep.stream().mapToInt(Integer::intValue).toArray());
+			}
+		}
+		return new Worn(slots, out);
+	}
 }

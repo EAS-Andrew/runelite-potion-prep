@@ -372,7 +372,8 @@ final class Farm
 			Teleport.HOSIDIUS_TAB,
 			Teleport.SKILLS_NECKLACE),
 		CIVITAS("Civitas illa Fortis", 2, true, 0, Quest.CHILDREN_OF_THE_SUN, false,
-			Teleport.QUETZAL_WHISTLE, Teleport.FAIRY_AJP, Teleport.PORTAL_CIVITAS, Teleport.FORTIS_SPELL, Teleport.FORTIS_TAB),
+			// The spell works from anywhere; a fairy ring first needs getting to one.
+			Teleport.QUETZAL_WHISTLE, Teleport.FORTIS_SPELL, Teleport.FORTIS_TAB, Teleport.PORTAL_CIVITAS, Teleport.FAIRY_AJP),
 		ARDOUGNE("Ardougne", 2, true, 0, null, false,
 			Teleport.ARDOUGNE_CLOAK, Teleport.SKILLS_NECKLACE, Teleport.PORTAL_ARDOUGNE, Teleport.PORTAL_FISHING_GUILD,
 			Teleport.FISHING_GUILD_SPELL, Teleport.FISHING_GUILD_TAB, Teleport.ARDOUGNE_SPELL, Teleport.ARDOUGNE_TAB,

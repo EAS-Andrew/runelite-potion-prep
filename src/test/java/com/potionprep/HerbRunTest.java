@@ -24,6 +24,7 @@ public class HerbRunTest
 			.overrides(Collections.emptyMap()).build();
 		Map<Integer, Integer> bank = new HashMap<>();
 		bank.put(ItemID.LIMPWURT_SEED, 10);
+		bank.put(ItemID.RANARR_SEED, 10);
 		if (compost)
 		{
 			bank.put(ItemID.BUCKET_ULTRACOMPOST, 10);
@@ -57,6 +58,28 @@ public class HerbRunTest
 		assertEquals(Patch.WEISS, r.current().getPatch());
 		r.skip();
 		assertTrue(r.finished());
+	}
+
+	@Test
+	public void outOfHerbSeedsOnlyPatchesWithSomethingToPickStay()
+	{
+		FarmPlan.Settings s = FarmPlan.Settings.builder().herb(HerbSeed.RANARR).flower(FlowerSeed.NONE)
+			.allotment(AllotmentSeed.NONE).patches(EnumSet.of(Patch.FALADOR, Patch.CATHERBY, Patch.ARDOUGNE))
+			.overrides(Collections.emptyMap()).build();
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.RANARR_SEED, 1);
+		Map<Patch, PatchStatus> status = new java.util.EnumMap<>(Patch.class);
+		status.put(Patch.CATHERBY, new PatchStatus(PatchStatus.State.EMPTY, 0));
+		status.put(Patch.FALADOR, new PatchStatus(PatchStatus.State.READY, 0));
+		FarmPlan plan = FarmPlan.compute(s, bank, new HashSet<>(),
+			FarmPlan.Account.builder().farming(99).patchStatus(status).build());
+		HerbRun r = HerbRun.from(plan, s, 0);
+		// Ardougne gets the one seed; Catherby is empty with none left, so it's dropped;
+		// Falador still has herbs to pick.
+		assertEquals(2, r.getStops().size());
+		assertEquals(Patch.ARDOUGNE, r.getStops().get(0).getPatch());
+		assertEquals(Patch.FALADOR, r.getStops().get(1).getPatch());
+		assertEquals("Pick", HerbRun.status(r.getStops().get(1).getPlots().get(0), false));
 	}
 
 	@Test

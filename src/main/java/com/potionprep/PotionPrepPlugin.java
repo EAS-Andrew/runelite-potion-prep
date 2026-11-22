@@ -143,10 +143,6 @@ public class PotionPrepPlugin extends Plugin
 
 	@Inject private net.runelite.client.ui.overlay.OverlayManager overlayManager;
 	@Inject private WithdrawOverlay withdrawOverlay;
-	@Inject private net.runelite.client.eventbus.EventBus eventBus;
-	@Inject private net.runelite.client.plugins.PluginManager pluginManager;
-	/** Where Shortest Path was last asked to route to, or null. */
-	private net.runelite.api.coords.WorldPoint pathTarget;
 	/** Where the player was last tick, to spot teleports. */
 	private net.runelite.api.coords.WorldPoint lastPos;
 	@Inject private RunItemOverlay runItemOverlay;
@@ -445,7 +441,6 @@ public class PotionPrepPlugin extends Plugin
 		scenePath.setOutline(null);
 		navOverlay.set(null);
 		mark(null, null);
-		routeTo(null);
 	}
 
 	/** Where the player is versus the current stop: patch state, route, arrow and highlights. */
@@ -531,9 +526,6 @@ public class PotionPrepPlugin extends Plugin
 		showPath(stop);
 		navOverlay.set(stop != null ? stop.getPoint() : null);
 		mark(stop != null ? stop.getPoint() : null, stop != null ? stop.getName() : null);
-		// Further away, Shortest Path (if installed) routes there with the teleports
-		// you've enabled in it; the hint arrow marks the patch once you're close.
-		routeTo(stop != null && !atStop ? stop.getPoint() : null);
 		// At the stop, outline the herb patch itself (no hint arrow: that's the game's).
 		scenePath.setOutline(atStop && stop.hasHerb() ? herbPatchNear(stop.getPoint()) : null);
 	}
@@ -618,7 +610,7 @@ public class PotionPrepPlugin extends Plugin
 					}
 					for (net.runelite.api.GameObject o : tile.getGameObjects())
 					{
-						if (o != null && HERB_PATCH_OBJECTS.contains(o.getId()))
+						if (o != null && isHerbPatch(o.getId()))
 						{
 							herbPatches.add(o);
 						}
@@ -626,6 +618,34 @@ public class PotionPrepPlugin extends Plugin
 				}
 			}
 		}
+	}
+
+	/** Whether an object's own definition is named "Herb patch" (definitions don't change). */
+	private final Map<Integer, Boolean> herbPatchIds = new HashMap<>();
+
+	/**
+	 * A herb patch object: a known id, or one the game names "Herb patch"
+	 * (itself or what it currently shows as). Newer patches like Civitas
+	 * illa Fortis have no named constant.
+	 */
+	private boolean isHerbPatch(int id)
+	{
+		if (HERB_PATCH_OBJECTS.contains(id))
+		{
+			return true;
+		}
+		net.runelite.api.ObjectComposition def = client.getObjectDefinition(id);
+		if (def == null)
+		{
+			return false;
+		}
+		if (herbPatchIds.computeIfAbsent(id, i -> "Herb patch".equalsIgnoreCase(def.getName())))
+		{
+			return true;
+		}
+		// What it shows as depends on the patch's varbit, so that isn't cached.
+		net.runelite.api.ObjectComposition now = def.getImpostorIds() != null ? def.getImpostor() : null;
+		return now != null && "Herb patch".equalsIgnoreCase(now.getName());
 	}
 
 	/** The loaded herb patch object closest to a point, within 15 tiles; null if none. */
@@ -683,37 +703,6 @@ public class PotionPrepPlugin extends Plugin
 		return dir + ", " + Math.max(Math.abs(dx), Math.abs(dy)) + " tiles";
 	}
 
-	/** Ask Shortest Path for a route (or to clear it), the way other plugins drive it. */
-	private void routeTo(net.runelite.api.coords.WorldPoint target)
-	{
-		if (java.util.Objects.equals(target, pathTarget))
-		{
-			return;
-		}
-		pathTarget = target;
-		if (target == null)
-		{
-			eventBus.post(new net.runelite.client.events.PluginMessage("shortestpath", "clear"));
-			return;
-		}
-		Map<String, Object> data = new HashMap<>();
-		data.put("target", target);
-		eventBus.post(new net.runelite.client.events.PluginMessage("shortestpath", "path", data));
-	}
-
-	/** Shortest Path is installed and on. */
-	private boolean shortestPathOn()
-	{
-		for (Plugin other : pluginManager.getPlugins())
-		{
-			if ("Shortest Path".equals(other.getName()) && pluginManager.isPluginEnabled(other))
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-
 	/**
 	 * Lines for the panel: "Patch|state|detail;detail" per stop. The current
 	 * stop's details are the teleport (on the way) or each plot's steps (there).
@@ -761,8 +750,7 @@ public class PotionPrepPlugin extends Plugin
 			rows[i] = st.getName() + "|" + state + "|" + detail;
 		}
 		// Last row: a note for the panel footer.
-		rows[stops.size()] = run.finished() ? "Run done in " + FarmPlan.minutes((System.currentTimeMillis() - run.getStartedAt()) / 1000)
-			: shortestPathOn() ? "" : "Install the Shortest Path plugin for a route to each patch";
+		rows[stops.size()] = run.finished() ? "Run done in " + FarmPlan.minutes((System.currentTimeMillis() - run.getStartedAt()) / 1000) : "";
 		return rows;
 	}
 
@@ -844,14 +832,16 @@ public class PotionPrepPlugin extends Plugin
 		if (farmMode())
 		{
 			farmPlan = computeFarm();
-			rows = farmPlan.getLayoutRows();
 			updateWithdrawOverlay();
-			for (int[] row : rows)
+			for (int[] row : farmPlan.getLayoutRows())
 			{
 				Arrays.stream(row).forEach(trackedIds::add);
 			}
-			int[] saved = savedGear(true);
-			gearRows = saved != null ? Gear.fromSlots(saved) : new ArrayList<>();
+			// Your saved gear, plus anything for the run you can wear (secateurs,
+			// teleport capes, amulets and rings) in slots it leaves free.
+			Gear.Worn worn = Gear.wear(savedGear(true), farmPlan.getLayoutRows(), this::equipSlot);
+			rows = worn.rows;
+			gearRows = Gear.fromSlots(worn.slots);
 			trackGear();
 		}
 		else
@@ -938,6 +928,13 @@ public class PotionPrepPlugin extends Plugin
 		Arrays.fill(out, -1);
 		slots.forEach((pos, id) -> out[pos] = id);
 		return out;
+	}
+
+	/** Equipment slot an item is worn in, or -1 if it can't be worn. */
+	private int equipSlot(int id)
+	{
+		net.runelite.client.game.ItemStats stats = itemManager.getItemStats(id);
+		return stats != null && stats.isEquipable() && stats.getEquipment() != null ? stats.getEquipment().getSlot() : -1;
 	}
 
 	private List<int[]> gearRows()
@@ -1145,7 +1142,7 @@ public class PotionPrepPlugin extends Plugin
 		{
 			inHouse = true;
 		}
-		if (HERB_PATCH_OBJECTS.contains(id))
+		if (isHerbPatch(id))
 		{
 			herbPatches.add(event.getGameObject());
 		}
