@@ -153,7 +153,7 @@ public class PotionPrepPlugin extends Plugin
 	@Inject private net.runelite.client.ui.overlay.worldmap.WorldMapPointManager worldMapPoints;
 	private net.runelite.client.ui.overlay.worldmap.WorldMapPoint mapMarker;
 	/** Herb patch objects in the loaded scene, to walk right up to them. */
-	private final Set<net.runelite.api.GameObject> herbPatches = new HashSet<>();
+	private final Map<net.runelite.api.GameObject, HerbRun.PlotType> herbPatches = new HashMap<>();
 	/** Tiles of the walk being shown (empty if none). */
 	private List<int[]> walk = Collections.emptyList();
 	/** "Run done in N min" once a run ends itself; cleared on the next run or bank visit. */
@@ -438,7 +438,7 @@ public class PotionPrepPlugin extends Plugin
 		atStop = false;
 		runItemOverlay.set(Collections.emptySet());
 		showPath(null);
-		scenePath.setOutline(null);
+		scenePath.setOutline(Collections.emptyList());
 		navOverlay.set(null);
 		mark(null, null);
 	}
@@ -527,7 +527,8 @@ public class PotionPrepPlugin extends Plugin
 		navOverlay.set(stop != null ? stop.getPoint() : null);
 		mark(stop != null ? stop.getPoint() : null, stop != null ? stop.getName() : null);
 		// At the stop, outline the herb patch itself (no hint arrow: that's the game's).
-		scenePath.setOutline(atStop && stop.hasHerb() ? herbPatchNear(stop.getPoint()) : null);
+		// At the stop, outline every patch with something still to do, in whatever order you like.
+		scenePath.setOutline(atStop ? toDo(stop) : Collections.emptyList());
 	}
 
 	/** Compost to hand: carried, or stored with the tool leprechaun (one at every patch). */
@@ -610,9 +611,10 @@ public class PotionPrepPlugin extends Plugin
 					}
 					for (net.runelite.api.GameObject o : tile.getGameObjects())
 					{
-						if (o != null && isHerbPatch(o.getId()))
+						HerbRun.PlotType type = o != null ? patchType(o.getId()) : null;
+						if (type != null)
 						{
-							herbPatches.add(o);
+							herbPatches.put(o, type);
 						}
 					}
 				}
@@ -620,32 +622,53 @@ public class PotionPrepPlugin extends Plugin
 		}
 	}
 
-	/** Whether an object's own definition is named "Herb patch" (definitions don't change). */
-	private final Map<Integer, Boolean> herbPatchIds = new HashMap<>();
+	/** What each object's own definition names it as a patch, or null (definitions don't change). */
+	private final Map<Integer, java.util.Optional<HerbRun.PlotType>> patchIds = new HashMap<>();
+
+	private static HerbRun.PlotType patchName(String name)
+	{
+		if (name == null)
+		{
+			return null;
+		}
+		switch (name.toLowerCase(java.util.Locale.ROOT))
+		{
+			case "herb patch":
+				return HerbRun.PlotType.HERB;
+			case "flower patch":
+				return HerbRun.PlotType.FLOWER;
+			case "allotment":
+				return HerbRun.PlotType.ALLOTMENT;
+			default:
+				return null;
+		}
+	}
 
 	/**
-	 * A herb patch object: a known id, or one the game names "Herb patch"
-	 * (itself or what it currently shows as). Newer patches like Civitas
-	 * illa Fortis have no named constant.
+	 * A farming patch the run uses, by object id: a known herb patch id, or
+	 * what the game names it (itself or what it currently shows as). Newer
+	 * patches like Civitas illa Fortis have no named constant.
 	 */
-	private boolean isHerbPatch(int id)
+	private HerbRun.PlotType patchType(int id)
 	{
 		if (HERB_PATCH_OBJECTS.contains(id))
 		{
-			return true;
+			return HerbRun.PlotType.HERB;
 		}
 		net.runelite.api.ObjectComposition def = client.getObjectDefinition(id);
 		if (def == null)
 		{
-			return false;
+			return null;
 		}
-		if (herbPatchIds.computeIfAbsent(id, i -> "Herb patch".equalsIgnoreCase(def.getName())))
+		HerbRun.PlotType own = patchIds.computeIfAbsent(id, i -> java.util.Optional.ofNullable(patchName(def.getName())))
+			.orElse(null);
+		if (own != null)
 		{
-			return true;
+			return own;
 		}
 		// What it shows as depends on the patch's varbit, so that isn't cached.
 		net.runelite.api.ObjectComposition now = def.getImpostorIds() != null ? def.getImpostor() : null;
-		return now != null && "Herb patch".equalsIgnoreCase(now.getName());
+		return now != null ? patchName(now.getName()) : null;
 	}
 
 	/** The loaded herb patch object closest to a point, within 15 tiles; null if none. */
@@ -653,16 +676,46 @@ public class PotionPrepPlugin extends Plugin
 	{
 		net.runelite.api.GameObject best = null;
 		int bestDist = 16;
-		for (net.runelite.api.GameObject o : herbPatches)
+		for (Map.Entry<net.runelite.api.GameObject, HerbRun.PlotType> e : herbPatches.entrySet())
 		{
+			net.runelite.api.GameObject o = e.getKey();
 			int d = o.getWorldLocation().distanceTo2D(at);
-			if (o.getPlane() == at.getPlane() && d < bestDist)
+			if (e.getValue() == HerbRun.PlotType.HERB && o.getPlane() == at.getPlane() && d < bestDist)
 			{
 				best = o;
 				bestDist = d;
 			}
 		}
 		return best;
+	}
+
+	/** Patches at a stop with something left to do; finished ones drop their outline. */
+	private List<net.runelite.api.GameObject> toDo(HerbRun.Stop stop)
+	{
+		Set<HerbRun.PlotType> left = EnumSet.noneOf(HerbRun.PlotType.class);
+		for (HerbRun.Plot p : stop.getPlots())
+		{
+			if (HerbRun.needsVisit(p, run.isCompost()))
+			{
+				left.add(p.getType());
+			}
+		}
+		List<net.runelite.api.GameObject> out = new ArrayList<>();
+		net.runelite.api.GameObject herb = left.contains(HerbRun.PlotType.HERB) ? herbPatchNear(stop.getPoint()) : null;
+		if (herb != null)
+		{
+			out.add(herb);
+		}
+		for (Map.Entry<net.runelite.api.GameObject, HerbRun.PlotType> e : herbPatches.entrySet())
+		{
+			net.runelite.api.GameObject o = e.getKey();
+			if (e.getValue() != HerbRun.PlotType.HERB && left.contains(e.getValue()) && o.getPlane() == stop.getPoint().getPlane()
+				&& o.getWorldLocation().distanceTo2D(stop.getPoint()) <= 15)
+			{
+				out.add(o);
+			}
+		}
+		return out;
 	}
 
 	/** World map marker for the stop (snaps to the map's edge; click to jump there). */
@@ -1142,9 +1195,10 @@ public class PotionPrepPlugin extends Plugin
 		{
 			inHouse = true;
 		}
-		if (isHerbPatch(id))
+		HerbRun.PlotType type = patchType(id);
+		if (type != null)
 		{
-			herbPatches.add(event.getGameObject());
+			herbPatches.put(event.getGameObject(), type);
 		}
 		String portal = PORTAL_OBJECTS.get(id);
 		if (portal != null)

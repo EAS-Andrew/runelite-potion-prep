@@ -490,6 +490,13 @@ public class HerbRun
 		return needsCompost ? "Compost" : "Done";
 	}
 
+	/** Something left to do at a plot: not finished, and not out of seeds with nothing to pick. */
+	static boolean needsVisit(Plot p, boolean compost)
+	{
+		String st = status(p, compost);
+		return !st.equals("Done") && !st.equals("No seeds");
+	}
+
 	/** What's left at a plot, e.g. "pick, compost, plant ranarr seed". */
 	static String todo(Plot p, boolean compost)
 	{

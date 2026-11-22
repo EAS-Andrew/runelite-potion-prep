@@ -33,24 +33,23 @@ class PathOverlay extends Overlay
 		setLayer(minimap ? OverlayLayer.ABOVE_WIDGETS : OverlayLayer.ABOVE_SCENE);
 	}
 
-	/** Object to outline (the herb patch, once you're there), or null. */
-	private volatile net.runelite.api.GameObject outline;
+	/** Objects to outline (the patches still to do, once you're there). */
+	private volatile List<net.runelite.api.GameObject> outline = java.util.Collections.emptyList();
 
 	void set(List<int[]> tiles)
 	{
 		this.tiles = tiles;
 	}
 
-	void setOutline(net.runelite.api.GameObject object)
+	void setOutline(List<net.runelite.api.GameObject> objects)
 	{
-		this.outline = object;
+		this.outline = objects;
 	}
 
 	@Override
 	public Dimension render(Graphics2D g)
 	{
-		net.runelite.api.GameObject o = outline;
-		if (!minimap && o != null)
+		for (net.runelite.api.GameObject o : minimap ? java.util.Collections.<net.runelite.api.GameObject>emptyList() : outline)
 		{
 			java.awt.Shape hull = o.getConvexHull();
 			if (hull != null)
