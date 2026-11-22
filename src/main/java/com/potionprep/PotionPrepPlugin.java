@@ -494,7 +494,7 @@ public class PotionPrepPlugin extends Plugin
 		run = null;
 		atStop = false;
 		runItemOverlay.set(Collections.emptySet());
-		teleportOverlay.set(null);
+		teleportOverlay.set(null, -1);
 		menuOption = null;
 		showPath(null);
 		scenePath.setOutline(Collections.emptyList());
@@ -564,8 +564,20 @@ public class PotionPrepPlugin extends Plugin
 			}
 		}
 
+		// A jump to near the stop (outside your house, where the portal's still to come) is the
+		// teleport done: from there it's a walk, so the teleport needn't be pointed at.
+		net.runelite.api.coords.WorldPoint here = me != null ? me.getWorldLocation() : null;
+		net.runelite.api.WorldView view = client.getTopLevelWorldView();
+		if (stop != null && here != null && lastPos != null && view != null && !view.isInstance()
+			&& here.distanceTo2D(lastPos) > TELEPORT_JUMP && here.distanceTo2D(stop.getPoint()) < ARRIVED)
+		{
+			teleportedTo = stop;
+		}
+		lastPos = here;
+		boolean teleported = stop != null && stop == teleportedTo;
+
 		Set<Integer> highlight = new HashSet<>();
-		if (stop != null && !atStop && stop.getItemId() != -1)
+		if (stop != null && !atStop && !teleported && stop.getItemId() != -1)
 		{
 			highlight.add(stop.getItemId());
 		}
@@ -584,7 +596,7 @@ public class PotionPrepPlugin extends Plugin
 		}
 		runItemOverlay.set(highlight);
 		// On the way, point at the spell to cast and colour the option to pick in teleport menus.
-		boolean travelling = stop != null && !atStop && stop.getTeleport() != null;
+		boolean travelling = stop != null && !atStop && !teleported && stop.getTeleport() != null;
 		String spell = null;
 		if (travelling)
 		{
@@ -595,7 +607,18 @@ public class PotionPrepPlugin extends Plugin
 				spell = "Teleport to House";
 			}
 		}
-		teleportOverlay.set(spell);
+		int tab = -1;
+		if (spell != null)
+		{
+			tab = TeleportOverlay.MAGIC;
+		}
+		else if (travelling && stop.getItemId() != -1)
+		{
+			int item = itemManager.canonicalize(stop.getItemId());
+			// Worn or carried; in the bank, the bank view shows it instead.
+			tab = wornIds.contains(item) ? TeleportOverlay.EQUIPMENT : invCounts.containsKey(item) ? TeleportOverlay.INVENTORY : -1;
+		}
+		teleportOverlay.set(spell, tab);
 		menuOption = travelling ? Farm.menuOption(stop.getTeleport(), stop.getPatch()) : null;
 
 		// Once the patch is in the loaded area, draw the walk there on the ground and minimap;
@@ -691,6 +714,15 @@ public class PotionPrepPlugin extends Plugin
 	private long pausedFor = -1;
 	/** Account hash of who's logged in, -1 if not known. */
 	private long loggedInAs = -1;
+
+	/** Where the player was last tick, to spot a teleport. */
+	private net.runelite.api.coords.WorldPoint lastPos;
+	/** The stop you've teleported to; its teleport highlights are done with. */
+	private HerbRun.Stop teleportedTo;
+	/** Moving further than this in a tick is a teleport, not a step. */
+	private static final int TELEPORT_JUMP = 15;
+	/** A teleport landing this close to the stop counts as having got there. */
+	private static final int ARRIVED = 200;
 
 	/** The plan last shown in the panel's herb run view. */
 	private FarmPlan panelFarmPlan;
