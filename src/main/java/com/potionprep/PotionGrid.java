@@ -151,9 +151,13 @@ class PotionGrid extends JPanel
 			addMouseListener(new MouseAdapter()
 			{
 				@Override
-				public void mouseClicked(MouseEvent e)
+				public void mousePressed(MouseEvent e)
 				{
-					onSelect.accept(potion);
+					// On press: a click that moves a pixel isn't a "click" to Swing.
+					if (javax.swing.SwingUtilities.isLeftMouseButton(e))
+					{
+						onSelect.accept(potion);
+					}
 				}
 
 				@Override

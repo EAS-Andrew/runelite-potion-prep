@@ -61,14 +61,12 @@ class FarmView extends JPanel
 	private final JPanel runRows = new JPanel();
 	private JPanel runButtonsPanel;
 	final GearButtons gearButtons;
-	private Section seedsSection;
-	private Section patchesSection;
-	private Section suppliesSection;
-	private Section stepsSection;
-	private Section gearSection;
-	private final java.util.List<Section> sections = new java.util.ArrayList<>();
-	/** A run is going: sections use their during-a-run open state. */
-	private boolean running;
+	private final Folds folds;
+	private Folds.Section seedsSection;
+	private Folds.Section patchesSection;
+	private Folds.Section suppliesSection;
+	private Folds.Section stepsSection;
+	private Folds.Section gearSection;
 	private final JLabel harvestLabel = new JLabel();
 	private final JLabel harvestSub = new JLabel();
 	/** Seeds you have (bank, inventory, seed vault) and your Farming level, for the dropdowns. */
@@ -87,6 +85,7 @@ class FarmView extends JPanel
 		this.itemManager = itemManager;
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 		setBackground(ColorScheme.DARK_GRAY_COLOR);
+		folds = new Folds(plugin, this, "farmOpen", OPEN_IDLE, "farmOpenRun", OPEN_RUN);
 
 		// Start run on top; everything else folds away (and does on its own during a run).
 		// Guided run: Start, then Skip / Stop while running, and each stop's progress.
@@ -134,7 +133,7 @@ class FarmView extends JPanel
 		showToggle.addActionListener(e -> plugin.setShowInBank(showToggle.isSelected()));
 		add(stretch(showToggle));
 		add(Box.createVerticalStrut(4));
-		seedsSection = section("seeds", "Seeds");
+		seedsSection = folds.add("seeds", "Seeds");
 		seedsSection.body.add(stretch(combo(herb, "Herb seed", () -> plugin.setFarmSetting("farmHerb", ((HerbSeed) herb.getSelectedItem()).name()))));
 		seedsSection.body.add(Box.createVerticalStrut(4));
 		seedsSection.body.add(stretch(combo(flower, "Flower seed, one per flower patch",
@@ -144,7 +143,7 @@ class FarmView extends JPanel
 			() -> plugin.setFarmSetting("farmAllotment", ((AllotmentSeed) allotment.getSelectedItem()).name()))));
 		seedsSection.body.add(Box.createVerticalStrut(6));
 
-		patchesSection = section("patches", "Patches");
+		patchesSection = folds.add("patches", "Patches");
 		patchList.setLayout(new BoxLayout(patchList, BoxLayout.Y_AXIS));
 		patchList.setOpaque(false);
 		patchList.setAlignmentX(LEFT_ALIGNMENT);
@@ -156,23 +155,23 @@ class FarmView extends JPanel
 		patchesSection.body.add(patchList);
 		patchesSection.body.add(Box.createVerticalStrut(8));
 
-		suppliesSection = section("supplies", "Supplies");
+		suppliesSection = folds.add("supplies", "Supplies");
 		suppliesPanel.setLayout(new BoxLayout(suppliesPanel, BoxLayout.Y_AXIS));
 		suppliesPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		suppliesSection.body.add(stretch(suppliesPanel));
 		suppliesSection.body.add(Box.createVerticalStrut(10));
 
-		stepsSection = section("todo", "To do");
+		stepsSection = folds.add("todo", "To do");
 		stepsPanel.setLayout(new BoxLayout(stepsPanel, BoxLayout.Y_AXIS));
 		stepsPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		stepsSection.body.add(stretch(stepsPanel));
 		stepsSection.body.add(Box.createVerticalStrut(10));
 
-		gearSection = section("gear", "Gear");
+		gearSection = folds.add("gear", "Gear");
 		gearButtons = new GearButtons(plugin, true);
 		gearSection.body.add(stretch(gearButtons));
 		gearSection.body.add(Box.createVerticalStrut(6));
-		applyFolds();
+		folds.apply();
 
 		statusLabel.setFont(FontManager.getRunescapeSmallFont());
 		statusLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
@@ -328,13 +327,7 @@ class FarmView extends JPanel
 	void setRun(String[] rows)
 	{
 		boolean running = rows != null;
-		if (running != this.running && !sections.isEmpty())
-		{
-			// A run started or ended: fold to that state's sections.
-			this.running = running;
-			applyFolds();
-		}
-		this.running = running;
+		folds.setRunning(running);
 		startRun.setVisible(!running);
 		runButtonsPanel.getParent().setVisible(running);
 		runRows.removeAll();
@@ -704,146 +697,14 @@ class FarmView extends JPanel
 		}
 	}
 
-	/** A heading you click to fold its body away, with a one-line summary beside it. */
-	private static final class Section
-	{
-		final String key;
-		final JPanel body = new JPanel();
-		final JLabel title = new JLabel();
-		final JLabel summary = new JLabel();
-		final JPanel header = new JPanel(new BorderLayout(4, 0));
-
-		Section(String key)
-		{
-			this.key = key;
-		}
-	}
-
 	/** Open by default when not running, and during a run (when the run list is what matters). */
 	private static final String OPEN_IDLE = "seeds,patches,supplies,todo,gear";
 	private static final String OPEN_RUN = "todo";
-
-	private Section section(String key, String name)
-	{
-		Section sec = new Section(key);
-		sec.title.setText(name);
-		sec.title.setFont(FontManager.getRunescapeSmallFont());
-		sec.title.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		sec.summary.setFont(FontManager.getRunescapeSmallFont());
-		sec.summary.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
-		sec.header.setOpaque(false);
-		sec.header.setBorder(new EmptyBorder(3, 0, 4, 0));
-		sec.header.add(sec.title, BorderLayout.WEST);
-		// In the middle, right-aligned: a long summary is cut short rather than pushing the title.
-		sec.summary.setHorizontalAlignment(SwingConstants.RIGHT);
-		sec.header.add(sec.summary, BorderLayout.CENTER);
-		sec.header.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		sec.header.setToolTipText("Click to show or hide");
-		sec.header.addMouseListener(new MouseAdapter()
-		{
-			@Override
-			public void mousePressed(MouseEvent e)
-			{
-				if (javax.swing.SwingUtilities.isLeftMouseButton(e))
-				{
-					java.util.Set<String> open = openSet();
-					if (!open.remove(sec.key))
-					{
-						open.add(sec.key);
-					}
-					plugin.setPanelSetting(running ? "farmOpenRun" : "farmOpen", String.join(",", open));
-					applyFolds();
-				}
-			}
-		});
-		sec.header.setAlignmentX(LEFT_ALIGNMENT);
-		sec.header.setMaximumSize(new Dimension(Integer.MAX_VALUE, sec.header.getPreferredSize().height));
-		sec.body.setLayout(new BoxLayout(sec.body, BoxLayout.Y_AXIS));
-		sec.body.setOpaque(false);
-		sec.body.setAlignmentX(LEFT_ALIGNMENT);
-		add(sec.header);
-		add(sec.body);
-		sections.add(sec);
-		return sec;
-	}
-
-	/** The open sections for now (running or not), as saved. */
-	private java.util.Set<String> openSet()
-	{
-		String v = plugin.getPanelSetting(running ? "farmOpenRun" : "farmOpen");
-		java.util.Set<String> out = new java.util.LinkedHashSet<>();
-		for (String k : (v != null ? v : running ? OPEN_RUN : OPEN_IDLE).split(","))
-		{
-			if (!k.isEmpty())
-			{
-				out.add(k);
-			}
-		}
-		return out;
-	}
-
-	private void applyFolds()
-	{
-		java.util.Set<String> open = openSet();
-		for (Section sec : sections)
-		{
-			boolean on = open.contains(sec.key);
-			sec.body.setVisible(on);
-			sec.title.setIcon(new Arrow(on));
-		}
-		revalidate();
-		repaint();
-	}
-
-	/** A small triangle: pointing down when open, right when folded. */
-	private static final class Arrow implements javax.swing.Icon
-	{
-		private final boolean open;
-
-		Arrow(boolean open)
-		{
-			this.open = open;
-		}
-
-		@Override
-		public void paintIcon(java.awt.Component c, java.awt.Graphics g, int x, int y)
-		{
-			java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
-			g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
-			g2.setColor(ColorScheme.LIGHT_GRAY_COLOR);
-			java.awt.Polygon t = open
-				? new java.awt.Polygon(new int[]{x, x + 8, x + 4}, new int[]{y + 2, y + 2, y + 7}, 3)
-				: new java.awt.Polygon(new int[]{x + 2, x + 7, x + 2}, new int[]{y, y + 4, y + 8}, 3);
-			g2.fill(t);
-			g2.dispose();
-		}
-
-		@Override
-		public int getIconWidth()
-		{
-			return 9;
-		}
-
-		@Override
-		public int getIconHeight()
-		{
-			return 9;
-		}
-	}
 
 	void setGearSaved(boolean saved)
 	{
 		gearButtons.setSaved(saved);
 		gearSection.summary.setText(saved ? "saved" : "not saved");
-	}
-
-	private static JLabel heading(String text)
-	{
-		JLabel l = new JLabel(text);
-		l.setFont(FontManager.getRunescapeSmallFont());
-		l.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		l.setBorder(BorderFactory.createEmptyBorder(0, 0, 4, 0));
-		return l;
 	}
 
 	private static String wrap(String text)

@@ -45,6 +45,11 @@ class PotionPrepPanel extends PluginPanel
 	private final FarmView farmView;
 	private final GearButtons potionGear;
 	private final JPanel potionsView;
+	private final Folds potionFolds;
+	private final Folds.Section potionSection;
+	private final Folds.Section ingredientsSection;
+	private final Folds.Section stepsSection;
+	private final Folds.Section gearSection;
 
 	PotionPrepPanel(PotionPrepPlugin plugin, ItemManager itemManager)
 	{
@@ -54,7 +59,12 @@ class PotionPrepPanel extends PluginPanel
 		super(true);
 		this.plugin = plugin;
 		this.itemManager = itemManager;
-		this.grid = new PotionGrid(itemManager, plugin::selectFromPanel);
+		// Picking a potion folds the grid away: it's the biggest thing in the panel.
+		this.grid = new PotionGrid(itemManager, p ->
+		{
+			plugin.selectFromPanel(p);
+			foldGrid();
+		});
 
 		setLayout(new BorderLayout());
 		setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -63,6 +73,9 @@ class PotionPrepPanel extends PluginPanel
 		JPanel content = new JPanel();
 		content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
 		content.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		potionFolds = new Folds(plugin, content, "potionOpen", "ingredients,todo", null, "");
+		potionSection = potionFolds.add("potion", "Potion");
+		potionSection.header.setToolTipText("Click to pick a different potion");
 
 		search.setIcon(IconTextField.Icon.SEARCH);
 		search.setPreferredSize(new Dimension(PANEL_WIDTH - 20, 30));
@@ -95,14 +108,15 @@ class PotionPrepPanel extends PluginPanel
 			if (first != null)
 			{
 				plugin.selectFromPanel(first);
+				potionFolds.setOpen("potion", false);
 			}
 		});
 		search.addClearListener(() -> grid.setFilter(""));
-		content.add(stretch(search));
+		potionSection.body.add(stretch(search));
+		potionSection.body.add(Box.createVerticalStrut(6));
+		potionSection.body.add(stretch(grid));
+		potionSection.body.add(Box.createVerticalStrut(6));
 		content.add(Box.createVerticalStrut(6));
-
-		content.add(stretch(grid));
-		content.add(Box.createVerticalStrut(10));
 
 		JPanel summary = new JPanel();
 		summary.setLayout(new BoxLayout(summary, BoxLayout.Y_AXIS));
@@ -127,22 +141,25 @@ class PotionPrepPanel extends PluginPanel
 		showToggle.setToolTipText("While on, the bank opens filtered to this potion");
 		showToggle.addActionListener(e -> plugin.setShowInBank(showToggle.isSelected()));
 		content.add(stretch(showToggle));
-		content.add(Box.createVerticalStrut(4));
-		potionGear = new GearButtons(plugin, false);
-		content.add(stretch(potionGear));
 		content.add(Box.createVerticalStrut(10));
 
-		content.add(left(heading("Ingredients")));
+		ingredientsSection = potionFolds.add("ingredients", "Ingredients");
 		rowsPanel.setLayout(new BoxLayout(rowsPanel, BoxLayout.Y_AXIS));
 		rowsPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		content.add(stretch(rowsPanel));
-		content.add(Box.createVerticalStrut(10));
+		ingredientsSection.body.add(stretch(rowsPanel));
+		ingredientsSection.body.add(Box.createVerticalStrut(10));
 
-		content.add(left(heading("To do")));
+		stepsSection = potionFolds.add("todo", "To do");
 		stepsPanel.setLayout(new BoxLayout(stepsPanel, BoxLayout.Y_AXIS));
 		stepsPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		content.add(stretch(stepsPanel));
-		content.add(Box.createVerticalStrut(10));
+		stepsSection.body.add(stretch(stepsPanel));
+		stepsSection.body.add(Box.createVerticalStrut(10));
+
+		gearSection = potionFolds.add("gear", "Gear");
+		potionGear = new GearButtons(plugin, false);
+		gearSection.body.add(stretch(potionGear));
+		gearSection.body.add(Box.createVerticalStrut(6));
+		potionFolds.apply();
 
 		statusLabel.setFont(FontManager.getRunescapeSmallFont());
 		statusLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
@@ -185,6 +202,7 @@ class PotionPrepPanel extends PluginPanel
 	void setGearSaved(boolean potions, boolean farm)
 	{
 		potionGear.setSaved(potions);
+		gearSection.summary.setText(potions ? "saved" : "not saved");
 		farmView.setGearSaved(farm);
 	}
 
@@ -236,6 +254,18 @@ class PotionPrepPanel extends PluginPanel
 			stepsPanel.add(left(l));
 		}
 
+		potionSection.summary.setText(potion.getName());
+		potionSection.summary.setForeground(Color.WHITE);
+		ingredientsSection.summary.setText(plan.getRows().size() + (plan.getRows().size() == 1 ? " item" : " items"));
+		int warnings = 0;
+		for (PotionPlan.Step step : plan.getSteps())
+		{
+			warnings += step.getSeverity() == PotionPlan.Severity.WARNING ? 1 : 0;
+		}
+		stepsSection.summary.setText(warnings > 0 ? warnings + (warnings == 1 ? " warning" : " warnings")
+			: plan.getSteps().isEmpty() ? "ready" : plan.getSteps().size() + " to do");
+		stepsSection.summary.setForeground(warnings > 0 ? BAD : plan.getSteps().isEmpty() ? GOOD : ACTION);
+
 		statusLabel.setText(wrap(status));
 		revalidate();
 		repaint();
@@ -270,13 +300,9 @@ class PotionPrepPanel extends PluginPanel
 		return p;
 	}
 
-	private static JLabel heading(String text)
+	private void foldGrid()
 	{
-		JLabel l = new JLabel(text);
-		l.setFont(FontManager.getRunescapeSmallFont());
-		l.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		l.setBorder(BorderFactory.createEmptyBorder(0, 0, 4, 0));
-		return l;
+		potionFolds.setOpen("potion", false);
 	}
 
 	private static String bullet(PotionPlan.Severity s)

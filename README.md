@@ -11,7 +11,7 @@ Switch to **Herb run** and it plans and guides your herb runs: which patches are
 
 ## Using it
 
-1. Open the **Potion Prep** panel (green flask icon) and click a potion. Search narrows the grid; Enter picks the first match.
+1. Open the **Potion Prep** panel (green flask icon), click the **Potion** heading and pick a potion. Search narrows the grid; Enter picks the first match. The grid folds away once you've picked, and Ingredients, To do and Gear fold the same way when you click their headings.
 2. Turn on **Show in bank**. While it's on and the Potion Prep panel is open, your bank shows just that potion's ingredients. Close the panel, click any other bank tab, or turn the toggle off to get your normal bank back.
 
 Each grid tile shows how many of that potion you can make from your bank and inventory. Red **Lv** means your Herblore level is too low. An orange count means you can make it with a botanical pie (+4 Herblore). The pie then gets its own row at the top of the bank view, and the first step tells you to eat it. Hover a tile to see the Herblore XP for everything you can make, including cleaning herbs and any potions made along the way.
