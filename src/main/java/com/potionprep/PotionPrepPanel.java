@@ -185,7 +185,7 @@ class PotionPrepPanel extends PluginPanel
 	void setGearSaved(boolean potions, boolean farm)
 	{
 		potionGear.setSaved(potions);
-		farmView.gearButtons.setSaved(farm);
+		farmView.setGearSaved(farm);
 	}
 
 	void updateFarm(FarmPlan plan, FarmPlan.Settings settings, String status, boolean showingInBank, boolean farm, String[] harvest,

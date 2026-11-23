@@ -405,6 +405,31 @@ final class Farm
 		}
 	}
 
+	/**
+	 * Any Ardougne cloak's unlimited Monastery Teleport lands a short walk west
+	 * of fairy ring DJP: the way to a ring (Wiki: Fairy ring). Best tier first.
+	 */
+	static final int[] MONASTERY_CLOAKS = {ItemID.ARDY_CAPE_ELITE, ItemID.ARDY_CAPE_HARD, ItemID.ARDY_CAPE_MEDIUM, ItemID.ARDY_CAPE_EASY};
+
+	/** The Ardougne cloak to reach a fairy ring with, or -1 if you have none. */
+	static int ringCloak(java.util.function.Predicate<Integer> owned)
+	{
+		for (int id : MONASTERY_CLOAKS)
+		{
+			if (owned.test(id))
+			{
+				return id;
+			}
+		}
+		return -1;
+	}
+
+	/** How to reach the ring and dial it, when you go by Ardougne cloak. */
+	static String viaCloak(Teleport t)
+	{
+		return "Ardougne cloak: Monastery Teleport, walk east to the fairy ring, dial " + t.getName().replace("Fairy ring ", "");
+	}
+
 	/** Dramen or lunar staff, needed for fairy rings without the Lumbridge elite diary. */
 	static final int[] FAIRY_STAFFS = {ItemID.DRAMEN_STAFF, ItemID.LUNAR_MOONCLAN_LIMINAL_STAFF};
 	/** Ways into your house, best first. */

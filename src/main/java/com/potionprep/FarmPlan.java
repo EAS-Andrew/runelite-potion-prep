@@ -487,6 +487,13 @@ public final class FarmPlan
 			{
 				teleIds.add(st.getItemId());
 			}
+			// A fairy ring needs getting to: an Ardougne cloak does it.
+			int cloak = Farm.ringCloak(owned);
+			if (!st.isLocked() && (!st.isGrowing() || st.isSideOnly()) && st.getProblem() == null && st.getTeleport() != null
+				&& st.getTeleport().getKind() == Farm.Teleport.Kind.FAIRY && cloak != -1)
+			{
+				teleIds.add(cloak);
+			}
 		}
 		addRow(rows, new ArrayList<>(teleIds));
 
@@ -885,6 +892,9 @@ public final class FarmPlan
 			this.acct = acct;
 		}
 
+		/** Of the last {@link #allocate()}, what the rune pouch covers. */
+		private final Map<Integer, Integer> fromPouch = new HashMap<>();
+
 		private int plain(Farm.Rune r)
 		{
 			return counts.getOrDefault(r.getItemId(), 0) + acct.getPouch().getOrDefault(r.getItemId(), 0);
@@ -967,10 +977,48 @@ public final class FarmPlan
 				}
 			});
 			Map<Integer, Integer> use = new HashMap<>();
+			// 0. What's already in the rune pouch: you carry it anyway, so nothing more to bring for it.
+			fromPouch.clear();
+			Map<Integer, Integer> pouch = acct.getPouch();
+			for (Farm.Rune r : Farm.Rune.values())
+			{
+				int k = Math.min(pouch.getOrDefault(r.getItemId(), 0), left.getOrDefault(r, 0));
+				if (k > 0)
+				{
+					use.merge(r.getItemId(), k, Integer::sum);
+					fromPouch.merge(r.getItemId(), k, Integer::sum);
+					left.merge(r, -k, Integer::sum);
+				}
+			}
+			for (int[] combo : Farm.COMBO_RUNES)
+			{
+				int k = 0;
+				for (Farm.Rune r : Farm.Rune.values())
+				{
+					if ((combo[1] & r.getElement()) != 0)
+					{
+						k = Math.max(k, left.getOrDefault(r, 0));
+					}
+				}
+				k = Math.min(k, pouch.getOrDefault(combo[0], 0));
+				if (k > 0)
+				{
+					use.merge(combo[0], k, Integer::sum);
+					fromPouch.merge(combo[0], k, Integer::sum);
+					for (Farm.Rune r : Farm.Rune.values())
+					{
+						if ((combo[1] & r.getElement()) != 0 && left.getOrDefault(r, 0) > 0)
+						{
+							left.put(r, Math.max(0, left.get(r) - k));
+						}
+					}
+				}
+			}
 			Map<Integer, Integer> comboLeft = new HashMap<>();
 			for (int[] combo : Farm.COMBO_RUNES)
 			{
-				comboLeft.put(combo[0], counts.getOrDefault(combo[0], 0) + acct.getPouch().getOrDefault(combo[0], 0));
+				comboLeft.put(combo[0], counts.getOrDefault(combo[0], 0) + pouch.getOrDefault(combo[0], 0)
+					- fromPouch.getOrDefault(combo[0], 0));
 			}
 			// 1. Combination runes where both their elements are needed.
 			for (int[] combo : Farm.COMBO_RUNES)
@@ -1003,7 +1051,7 @@ public final class FarmPlan
 			// 2. Plain runes.
 			for (Farm.Rune r : Farm.Rune.values())
 			{
-				int k = Math.min(plain(r), left.getOrDefault(r, 0));
+				int k = Math.min(plain(r) - fromPouch.getOrDefault(r.getItemId(), 0), left.getOrDefault(r, 0));
 				if (k > 0)
 				{
 					use.merge(r.getItemId(), k, Integer::sum);
@@ -1039,6 +1087,12 @@ public final class FarmPlan
 			return use;
 		}
 
+		/** Some of this rune is to come from the bank (or loose in your inventory), not the pouch. */
+		private boolean fromBank(Map<Integer, Integer> alloc, int id)
+		{
+			return alloc.getOrDefault(id, 0) > fromPouch.getOrDefault(id, 0) && counts.getOrDefault(id, 0) > 0;
+		}
+
 		/** Adds a supply row per rune the run uses; returns the rune ids to lay out. */
 		List<Integer> supplies(List<Supply> supplies, List<Step> steps)
 		{
@@ -1070,14 +1124,14 @@ public final class FarmPlan
 				}
 				// Lay out the rune if some of it is to be used (and isn't just in the pouch),
 				// or if you're short of it.
-				if (alloc.containsKey(r.getItemId()) && counts.getOrDefault(r.getItemId(), 0) > 0 || short_ > 0)
+				if (fromBank(alloc, r.getItemId()) || short_ > 0)
 				{
 					ids.add(r.getItemId());
 				}
 			}
 			for (int[] combo : Farm.COMBO_RUNES)
 			{
-				if (alloc.containsKey(combo[0]) && counts.getOrDefault(combo[0], 0) > 0)
+				if (fromBank(alloc, combo[0]))
 				{
 					ids.add(combo[0]);
 				}

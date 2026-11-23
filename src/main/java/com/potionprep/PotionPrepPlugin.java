@@ -262,6 +262,7 @@ public class PotionPrepPlugin extends Plugin
 			lastLayout = null;
 			invCounts.clear();
 			herbPatches.clear();
+			rings.clear();
 			patchVarbits.clear();
 		});
 	}
@@ -341,6 +342,17 @@ public class PotionPrepPlugin extends Plugin
 			relayout();
 			pushToPanel(null);
 		});
+	}
+
+	/** Panel-only state (which sections are open): saved, nothing replanned. */
+	void setPanelSetting(String key, String value)
+	{
+		configManager.setConfiguration(PotionPrepConfig.GROUP, key, value);
+	}
+
+	String getPanelSetting(String key)
+	{
+		return configManager.getConfiguration(PotionPrepConfig.GROUP, key);
 	}
 
 	void setPatchEnabled(Farm.Patch patch, boolean on)
@@ -573,13 +585,51 @@ public class PotionPrepPlugin extends Plugin
 		{
 			teleportedTo = stop;
 		}
+		// Going by fairy ring: the Ardougne cloak first, to the Monastery by ring DJP.
+		int cloak = ringCloak(stop);
+		if (cloak != -1 && stop != teleportedTo && here != null && lastPos != null && view != null && !view.isInstance()
+			&& here.distanceTo2D(lastPos) > TELEPORT_JUMP)
+		{
+			// Jumped, but not to the patch: at the ring now, so the cloak's done with.
+			atRing = stop;
+		}
 		lastPos = here;
 		boolean teleported = stop != null && stop == teleportedTo;
+		// The ring itself, once you're by one (after the cloak, or one was close anyway).
+		net.runelite.api.GameObject ring = null;
+		if (stop != null && here != null && !teleported && !atStop && stop.getTeleport() != null
+			&& stop.getTeleport().getKind() == Farm.Teleport.Kind.FAIRY)
+		{
+			int best = Integer.MAX_VALUE;
+			for (net.runelite.api.GameObject o : rings)
+			{
+				int d = o.getWorldLocation().distanceTo2D(here);
+				if (o.getPlane() == here.getPlane() && d < best)
+				{
+					best = d;
+					ring = o;
+				}
+			}
+			if (ring != null && !(stop == atRing || cloak == -1 || best <= RING_CLOSE))
+			{
+				ring = null;
+			}
+		}
+		ringFor = ring != null ? stop : null;
+		ringObject = ring;
+		boolean byCloak = cloak != -1 && stop != atRing && ring == null;
 
 		Set<Integer> highlight = new HashSet<>();
-		if (stop != null && !atStop && !teleported && stop.getItemId() != -1)
+		if (stop != null && !atStop && !teleported && (stop.getItemId() != -1 || byCloak))
 		{
-			highlight.add(stop.getItemId());
+			if (stop.getItemId() != -1)
+			{
+				highlight.add(stop.getItemId());
+			}
+			if (byCloak)
+			{
+				highlight.add(cloak);
+			}
 		}
 		else if (stop != null)
 		{
@@ -612,23 +662,24 @@ public class PotionPrepPlugin extends Plugin
 		{
 			tab = TeleportOverlay.MAGIC;
 		}
-		else if (travelling && stop.getItemId() != -1)
+		else if (travelling && (stop.getItemId() != -1 || byCloak))
 		{
-			int item = itemManager.canonicalize(stop.getItemId());
+			int item = itemManager.canonicalize(byCloak ? cloak : stop.getItemId());
 			// Worn or carried; in the bank, the bank view shows it instead.
 			tab = wornIds.contains(item) ? TeleportOverlay.EQUIPMENT : invCounts.containsKey(item) ? TeleportOverlay.INVENTORY : -1;
 		}
 		teleportOverlay.set(spell, tab);
-		menuOption = travelling ? Farm.menuOption(stop.getTeleport(), stop.getPatch()) : null;
+		menuOption = travelling && !byCloak ? Farm.menuOption(stop.getTeleport(), stop.getPatch()) : null;
 
 		// Once the patch is in the loaded area, draw the walk there on the ground and minimap;
 		// a minimap pin/arrow and a world map marker always point to it.
 		showPath(stop);
-		navOverlay.set(stop != null ? stop.getPoint() : null);
-		mark(stop != null ? stop.getPoint() : null, stop != null ? stop.getName() : null);
+		net.runelite.api.coords.WorldPoint goal = ring != null ? ring.getWorldLocation() : stop != null ? stop.getPoint() : null;
+		navOverlay.set(goal);
+		mark(goal, stop == null ? null : ring != null ? "Fairy ring" : stop.getName());
 		// At the stop, outline the herb patch itself (no hint arrow: that's the game's).
 		// At the stop, outline every patch with something still to do, in whatever order you like.
-		scenePath.setOutline(atStop ? toDo(stop) : Collections.emptyList());
+		scenePath.setOutline(atStop ? toDo(stop) : ring != null ? Collections.singletonList(ring) : Collections.emptyList());
 	}
 
 	/** Compost to hand: carried, or stored with the tool leprechaun (one at every patch). */
@@ -673,7 +724,8 @@ public class PotionPrepPlugin extends Plugin
 			if (from != null && maps != null && maps[wv.getPlane()] != null)
 			{
 				int[][] flags = maps[wv.getPlane()].getFlags();
-				net.runelite.api.GameObject patch = stop.hasHerb() ? herbPatchNear(stop.getPatch(), stop.getPoint()) : nearestToDo(stop, me);
+				net.runelite.api.GameObject patch = ringFor == stop && ringObject != null ? ringObject
+					: stop.hasHerb() ? herbPatchNear(stop.getPatch(), stop.getPoint()) : nearestToDo(stop, me);
 				net.runelite.api.coords.LocalPoint to = patch == null
 					? net.runelite.api.coords.LocalPoint.fromWorld(wv, stop.getPoint()) : null;
 				// The search is only redone when you, the target or the loaded area moves.
@@ -717,6 +769,26 @@ public class PotionPrepPlugin extends Plugin
 
 	/** Where the player was last tick, to spot a teleport. */
 	private net.runelite.api.coords.WorldPoint lastPos;
+	/** A ring this close is walked to, not reached by cloak. */
+	private static final int RING_CLOSE = 25;
+	/** The stop being reached by the fairy ring in view, and that ring; null otherwise. */
+	private HerbRun.Stop ringFor;
+	private net.runelite.api.GameObject ringObject;
+
+	/** The fairy ring stop whose ring you've reached; the Ardougne cloak is done with. */
+	private HerbRun.Stop atRing;
+
+	/** The Ardougne cloak to reach this stop's fairy ring with, or -1 (not a fairy ring, or no cloak). */
+	private int ringCloak(HerbRun.Stop stop)
+	{
+		if (stop == null || stop.getTeleport() == null || stop.getTeleport().getKind() != Farm.Teleport.Kind.FAIRY)
+		{
+			return -1;
+		}
+		return Farm.ringCloak(id -> invCounts.getOrDefault(id, 0) > 0 || wornIds.contains(id)
+			|| bankCounts != null && bankCounts.getOrDefault(id, 0) > 0);
+	}
+
 	/** The stop you've teleported to; its teleport highlights are done with. */
 	private HerbRun.Stop teleportedTo;
 	/** Moving further than this in a tick is a teleport, not a step. */
@@ -883,8 +955,21 @@ public class PotionPrepPlugin extends Plugin
 	private final Map<Integer, Integer> transmitIds = new HashMap<>();
 
 	/** Remember a patch object: by its farming varbit, or failing that its id or name. */
+	/** Fairy rings in the loaded area. */
+	private final Set<net.runelite.api.GameObject> rings = new HashSet<>();
+	/** Object id to whether it's a fairy ring. */
+	private final Map<Integer, Boolean> ringIds = new HashMap<>();
+
 	private void track(net.runelite.api.GameObject o)
 	{
+		if (ringIds.computeIfAbsent(o.getId(), i ->
+		{
+			net.runelite.api.ObjectComposition def = client.getObjectDefinition(i);
+			return def != null && "Fairy ring".equalsIgnoreCase(def.getName());
+		}))
+		{
+			rings.add(o);
+		}
 		int id = o.getId();
 		HerbRun.PlotType type = patchType(id);
 		int varbit = transmitIds.computeIfAbsent(id, i ->
@@ -1019,7 +1104,7 @@ public class PotionPrepPlugin extends Plugin
 		}
 	}
 
-	/** "north-east, 120 tiles" from the player to a point. */
+	/** "north-east" from the player to a point, "" when there. */
 	private String direction(net.runelite.api.coords.WorldPoint to)
 	{
 		net.runelite.api.Player me = client.getLocalPlayer();
@@ -1034,14 +1119,14 @@ public class PotionPrepPlugin extends Plugin
 		String ns = dy > Math.abs(dx) / 2 ? "north" : -dy > Math.abs(dx) / 2 ? "south" : "";
 		String ew = dx > Math.abs(dy) / 2 ? "east" : -dx > Math.abs(dy) / 2 ? "west" : "";
 		String dir = ns.isEmpty() ? ew : ew.isEmpty() ? ns : ns + "-" + ew;
-		return dir + ", " + Math.max(Math.abs(dx), Math.abs(dy)) + " tiles";
+		return dir;
 	}
 
 	/**
 	 * Lines for the panel: "Patch|state|detail;detail" per stop. The current
 	 * stop's details are the teleport (on the way) or each plot's steps (there).
 	 */
-	private String[] runRows()
+	private String[] runRows(List<String> missing)
 	{
 		if (run == null)
 		{
@@ -1056,9 +1141,19 @@ public class PotionPrepPlugin extends Plugin
 			StringBuilder detail = new StringBuilder();
 			if (i == run.getIndex())
 			{
+				if (!missing.isEmpty())
+				{
+					// Left the bank short: say so before the first teleport, not at the patch.
+					detail.append("Not carrying: ").append(String.join(", ", missing)).append(";");
+				}
 				if (!atStop)
 				{
-					if (walk.size() > 1)
+					if (st == ringFor)
+					{
+						detail.append(walk.size() > 1 ? "Follow the path to the fairy ring" : "Walk to the fairy ring")
+							.append(", dial ").append(st.getTeleport().getName().replace("Fairy ring ", ""));
+					}
+					else if (walk.size() > 1)
 					{
 						detail.append("Follow the path");
 					}
@@ -1067,6 +1162,10 @@ public class PotionPrepPlugin extends Plugin
 						// No teleport, or already teleported in: it's a walk from here.
 						String dir = direction(st.getPoint());
 						detail.append(dir.isEmpty() ? "Walk to the patch" : "Walk to the patch, " + dir);
+					}
+					else if (ringCloak(st) != -1 && st != atRing && st != ringFor)
+					{
+						detail.append(Farm.viaCloak(st.getTeleport()));
 					}
 					else
 					{
@@ -1359,16 +1458,7 @@ public class PotionPrepPlugin extends Plugin
 	private void updateWithdrawOverlay()
 	{
 		FarmPlan.Account acct = account();
-		Map<Integer, Integer> carried = new HashMap<>(invCounts);
-		boolean pouchCarried = false;
-		for (int id : Farm.RUNE_POUCHES)
-		{
-			pouchCarried |= invCounts.getOrDefault(id, 0) > 0;
-		}
-		if (pouchCarried)
-		{
-			acct.getPouch().forEach((id, n) -> carried.merge(id, n, Integer::sum));
-		}
+		Map<Integer, Integer> carried = carried(acct);
 		Map<Integer, Integer> available = combinedCounts();
 		acct.getPouch().forEach((id, n) -> available.merge(id, n, Integer::sum));
 
@@ -1385,6 +1475,94 @@ public class PotionPrepPlugin extends Plugin
 			}
 		});
 		withdrawOverlay.set(TAG.equals(bankTagsService.getActiveTag()), left, canGet);
+	}
+
+	/** Inventory (seed box included), plus the rune pouch's runes when the pouch is in it. */
+	private Map<Integer, Integer> carried(FarmPlan.Account acct)
+	{
+		Map<Integer, Integer> carried = new HashMap<>(invCounts);
+		boolean pouchCarried = false;
+		for (int id : Farm.RUNE_POUCHES)
+		{
+			pouchCarried |= invCounts.getOrDefault(id, 0) > 0;
+		}
+		if (pouchCarried)
+		{
+			acct.getPouch().forEach((id, n) -> carried.merge(id, n, Integer::sum));
+		}
+		return carried;
+	}
+
+	/**
+	 * What the run needs that you're neither carrying nor wearing: counted
+	 * things ("3 x Ranarr seed"), tools and teleport items. Empty once you've
+	 * reached the first patch, when what's left to need has changed.
+	 */
+	private List<String> notCarried(FarmPlan fp)
+	{
+		List<String> out = new ArrayList<>();
+		if (run == null || fp == null || run.getIndex() > 0 || run.current() == null || run.current().isVisited() || atStop)
+		{
+			return out;
+		}
+		Map<Integer, Integer> carried = carried(account());
+		java.util.function.IntPredicate has = id -> carried.getOrDefault(id, 0) > 0 || wornIds.contains(id);
+		Map<Integer, String> names = new HashMap<>();
+		for (FarmPlan.Supply sup : fp.getSupplies())
+		{
+			names.putIfAbsent(sup.getItemId(), sup.getName());
+		}
+		fp.getWithdraw().forEach((id, need) ->
+		{
+			int still = need - carried.getOrDefault(id, 0);
+			if (still > 0)
+			{
+				String name = names.containsKey(id) ? names.get(id) : itemManager.getItemComposition(id).getName();
+				out.add(still + " x " + name);
+			}
+		});
+		Set<Integer> runes = new HashSet<>();
+		for (Farm.Rune r : Farm.Rune.values())
+		{
+			runes.add(r.getItemId());
+		}
+		for (FarmPlan.Supply sup : fp.getSupplies())
+		{
+			// Tools and the like: one to bring. Stored ones are fetched at the patch.
+			int id = sup.getItemId();
+			if (sup.getWhere() == null && sup.getHave() > 0 && !fp.getWithdraw().containsKey(id) && !runes.contains(id)
+				&& sup.getNeed() <= 1 && !has.test(id))
+			{
+				out.add(sup.getName());
+			}
+		}
+		Set<Farm.Teleport> teles = new java.util.LinkedHashSet<>();
+		for (FarmPlan.Stop st : fp.getStops())
+		{
+			if (!st.isLocked() && (!st.isGrowing() || st.isSideOnly()) && st.getProblem() == null && st.getTeleport() != null
+				&& st.getItemId() != -1 && !Farm.consumable(st.getItemId()))
+			{
+				teles.add(st.getTeleport());
+			}
+		}
+		boolean ring = fp.getStops().stream().anyMatch(st -> !st.isLocked() && (!st.isGrowing() || st.isSideOnly())
+			&& st.getProblem() == null && st.getTeleport() != null && st.getTeleport().getKind() == Farm.Teleport.Kind.FAIRY);
+		int cloak = Farm.ringCloak(id -> carried.getOrDefault(id, 0) > 0 || wornIds.contains(id)
+			|| bankCounts != null && bankCounts.getOrDefault(id, 0) > 0);
+		if (ring && cloak != -1 && !teles.contains(Farm.Teleport.ARDOUGNE_CLOAK)
+			&& Arrays.stream(Farm.MONASTERY_CLOAKS).noneMatch(has))
+		{
+			out.add("Ardougne cloak");
+		}
+		for (Farm.Teleport t : teles)
+		{
+			// Any charge or tier of it will do.
+			if (Arrays.stream(t.getIds()).noneMatch(has))
+			{
+				out.add(t.getName());
+			}
+		}
+		return out;
 	}
 
 	private FarmPlan computeFarm()
@@ -1513,6 +1691,7 @@ public class PotionPrepPlugin extends Plugin
 	{
 		herbPatches.remove(event.getGameObject());
 		patchVarbits.remove(event.getGameObject());
+		rings.remove(event.getGameObject());
 	}
 
 	@Subscribe
@@ -1978,6 +2157,14 @@ public class PotionPrepPlugin extends Plugin
 		if (event.getGroupId() == InterfaceID.BANKMAIN)
 		{
 			shownThisVisit = false;
+			// Closing the bank before the run's first patch: a last check you've got everything.
+			List<String> missing = farmMode() ? notCarried(farmPlan) : Collections.emptyList();
+			if (!missing.isEmpty())
+			{
+				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+					net.runelite.client.util.ColorUtil.wrapWithColorTag("Herb run: not carrying " + String.join(", ", missing),
+						new java.awt.Color(255, 80, 80)), null);
+			}
 		}
 	}
 
@@ -2054,6 +2241,7 @@ public class PotionPrepPlugin extends Plugin
 			inHouse = false;
 			housePortals.clear();
 			herbPatches.clear();
+			rings.clear();
 			patchVarbits.clear();
 			pathKey = null;
 			walk = Collections.emptyList();
@@ -2221,7 +2409,7 @@ public class PotionPrepPlugin extends Plugin
 		FarmPlan fp = farm || panelFarmPlan == null ? FarmPlan.compute(fs, counts, wornIds, account()) : panelFarmPlan;
 		panelFarmPlan = fp;
 		String[] harvest = harvestNote(fp, counts, boosted);
-		String[] rows = runRows();
+		String[] rows = runRows(notCarried(fp));
 		boolean potionsGear = savedGear(false) != null;
 		boolean farmGear = savedGear(true) != null;
 		Map<Integer, Integer> seeds = new HashMap<>(counts);

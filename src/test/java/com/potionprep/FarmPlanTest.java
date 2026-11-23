@@ -446,6 +446,29 @@ public class FarmPlanTest
 	}
 
 	@Test
+	public void pouchRunesComeBeforeComboRunesInTheBank()
+	{
+		// Falador: 3 air, 1 water, 1 law. Water and law in the pouch; air in the bank,
+		// along with mist runes. Bring the airs, not mist runes for elements already carried.
+		Map<Patch, Teleport> o = new EnumMap<>(Patch.class);
+		o.put(Patch.FALADOR, Teleport.FALADOR_SPELL);
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.DIVINE_RUNE_POUCH, 1);
+		bank.put(ItemID.MISTRUNE, 50);
+		bank.put(ItemID.AIRRUNE, 50);
+		Map<Integer, Integer> pouch = new HashMap<>();
+		pouch.put(ItemID.WATERRUNE, 100);
+		pouch.put(ItemID.LAWRUNE, 100);
+		FarmPlan plan = FarmPlan.compute(settings(EnumSet.of(Patch.FALADOR), FlowerSeed.NONE, AllotmentSeed.NONE, o),
+			bank, new HashSet<>(), FarmPlan.Account.builder().farming(99).magic(99).spellbook(Farm.STANDARD).pouch(pouch).build());
+		assertEquals(null, plan.getWithdraw().get(ItemID.MISTRUNE));
+		assertEquals(Integer.valueOf(3), plan.getWithdraw().get(ItemID.AIRRUNE));
+		int[] runeRow = plan.getLayoutRows().stream().filter(r -> r.length > 0 && r[0] == ItemID.DIVINE_RUNE_POUCH)
+			.findFirst().orElse(null);
+		assertArrayEquals(new int[]{ItemID.DIVINE_RUNE_POUCH, ItemID.AIRRUNE}, runeRow);
+	}
+
+	@Test
 	public void chosenSpellListsRunesEvenWhenShort()
 	{
 		Map<Patch, Teleport> o = new EnumMap<>(Patch.class);
