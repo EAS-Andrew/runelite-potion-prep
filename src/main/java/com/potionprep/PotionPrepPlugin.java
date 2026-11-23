@@ -629,7 +629,7 @@ public class PotionPrepPlugin extends Plugin
 			{
 				highlight.add(stop.getItemId());
 			}
-			if (byCloak)
+			if (byCloak && cloak != Farm.RING_SPELL)
 			{
 				highlight.add(cloak);
 			}
@@ -654,7 +654,7 @@ public class PotionPrepPlugin extends Plugin
 		if (travelling)
 		{
 			spell = Farm.spellName(stop.getTeleport());
-			if (spell == null && stop.getItemId() == -1 && FarmPlan.entersHouse(stop.getTeleport()))
+			if (spell == null && (byCloak ? cloak == Farm.RING_SPELL : stop.getItemId() == -1 && FarmPlan.entersHouse(stop.getTeleport())))
 			{
 				// No cape or tablet: the run planned Teleport to House.
 				spell = "Teleport to House";
@@ -783,15 +783,14 @@ public class PotionPrepPlugin extends Plugin
 	/** The fairy ring stop whose ring you've reached; the Ardougne cloak is done with. */
 	private HerbRun.Stop atRing;
 
-	/** The Ardougne cloak to reach this stop's fairy ring with, or -1 (not a fairy ring, or no cloak). */
+	/** How to reach this stop's fairy ring (an item, or {@link Farm#RING_SPELL}), or -1 (not a fairy ring, or no way). */
 	private int ringCloak(HerbRun.Stop stop)
 	{
 		if (stop == null || stop.getTeleport() == null || stop.getTeleport().getKind() != Farm.Teleport.Kind.FAIRY)
 		{
 			return -1;
 		}
-		return Farm.ringWay(id -> invCounts.getOrDefault(id, 0) > 0 || wornIds.contains(id)
-			|| bankCounts != null && bankCounts.getOrDefault(id, 0) > 0, houseRing());
+		return stop.getRingWay();
 	}
 
 	/** Your house has a fairy ring: set in the config, or seen on a visit. */
@@ -1558,15 +1557,22 @@ public class PotionPrepPlugin extends Plugin
 				teles.add(st.getTeleport());
 			}
 		}
-		boolean ring = fp.getStops().stream().anyMatch(st -> !st.isLocked() && (!st.isGrowing() || st.isSideOnly())
-			&& st.getProblem() == null && st.getTeleport() != null && st.getTeleport().getKind() == Farm.Teleport.Kind.FAIRY);
-		int way = Farm.ringWay(id -> carried.getOrDefault(id, 0) > 0 || wornIds.contains(id)
-			|| bankCounts != null && bankCounts.getOrDefault(id, 0) > 0, houseRing());
-		int[] kind = Farm.ringWayKind(way);
-		if (ring && way != -1 && !(kind == Farm.MONASTERY_CLOAKS && teles.contains(Farm.Teleport.ARDOUGNE_CLOAK))
-			&& Arrays.stream(kind).noneMatch(has))
+		// The cape or cloak to reach a fairy ring (tabs are counted with the withdrawals).
+		Set<Integer> ways = new java.util.LinkedHashSet<>();
+		for (FarmPlan.Stop st : fp.getStops())
 		{
-			out.add(kind == Farm.MONASTERY_CLOAKS ? "Ardougne cloak" : itemManager.getItemComposition(way).getName());
+			if (st.getRingWay() >= 0 && !Farm.consumable(st.getRingWay()))
+			{
+				ways.add(st.getRingWay());
+			}
+		}
+		for (int way : ways)
+		{
+			int[] kind = Farm.ringWayKind(way);
+			if (!(kind == Farm.MONASTERY_CLOAKS && teles.contains(Farm.Teleport.ARDOUGNE_CLOAK)) && Arrays.stream(kind).noneMatch(has))
+			{
+				out.add(kind == Farm.MONASTERY_CLOAKS ? "Ardougne cloak" : itemManager.getItemComposition(way).getName());
+			}
 		}
 		for (Farm.Teleport t : teles)
 		{

@@ -446,17 +446,29 @@ final class Farm
 		return ringCloak(owned);
 	}
 
-	/** Items that do the same job as this ring way: any cloak, or any house cape. */
+	/** Ring way: cast Teleport to House to reach the ring there. */
+	static final int RING_SPELL = -2;
+
+	/** Items that do the same job as this ring way: any cloak, or any house cape (or just the tab). */
 	static int[] ringWayKind(int way)
 	{
-		return java.util.Arrays.stream(HOUSE_CAPES).anyMatch(c -> c == way) ? HOUSE_CAPES : MONASTERY_CLOAKS;
+		return java.util.Arrays.stream(HOUSE_CAPES).anyMatch(c -> c == way) ? HOUSE_CAPES
+			: java.util.Arrays.stream(MONASTERY_CLOAKS).anyMatch(c -> c == way) ? MONASTERY_CLOAKS : new int[]{way};
+	}
+
+	/** The way goes through your house. */
+	static boolean ringInHouse(int way)
+	{
+		return way != -1 && ringWayKind(way) != MONASTERY_CLOAKS;
 	}
 
 	/** How to reach the ring and dial it, going by {@code way} (from {@link #ringWay}). */
 	static String viaRing(int way, Teleport t)
 	{
 		String code = t.getName().replace("Fairy ring ", "");
-		return ringWayKind(way) == HOUSE_CAPES ? "Teleport to your house, use the fairy ring, dial " + code
+		return way == RING_SPELL ? "Cast Teleport to House, use the fairy ring, dial " + code
+			: way == ItemID.POH_TABLET_TELEPORTTOHOUSE ? "Break a house tab, use the fairy ring, dial " + code
+			: ringInHouse(way) ? "Teleport to your house, use the fairy ring, dial " + code
 			: "Ardougne cloak: Monastery Teleport, walk east to the fairy ring, dial " + code;
 	}
 

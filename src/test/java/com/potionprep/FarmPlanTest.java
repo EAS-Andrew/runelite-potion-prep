@@ -306,6 +306,40 @@ public class FarmPlanTest
 	}
 
 	@Test
+	public void houseRingIsReachedByTabThenSpell()
+	{
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.POH_TABLET_TELEPORTTOHOUSE, 1);
+		bank.put(ItemID.LAWRUNE, 5);
+		bank.put(ItemID.AIRRUNE, 5);
+		bank.put(ItemID.EARTHRUNE, 5);
+		Map<Patch, Teleport> o = new EnumMap<>(Patch.class);
+		o.put(Patch.FARMING_GUILD, Teleport.FAIRY_CIR);
+		o.put(Patch.HOSIDIUS, Teleport.FAIRY_AKR);
+		FarmPlan.Account a = FarmPlan.Account.builder().farming(99).fairyRings(true).lumbridgeElite(true).fairyHouse(true).build();
+		FarmPlan plan = FarmPlan.compute(settings(EnumSet.of(Patch.FARMING_GUILD, Patch.HOSIDIUS), FlowerSeed.NONE,
+			AllotmentSeed.NONE, o), bank, new HashSet<>(), a);
+		// One tab for the first ring, then the spell: and the tab is withdrawn.
+		assertEquals(ItemID.POH_TABLET_TELEPORTTOHOUSE, stop(plan, Patch.FARMING_GUILD).getRingWay());
+		assertEquals(Farm.RING_SPELL, stop(plan, Patch.HOSIDIUS).getRingWay());
+		assertEquals(Integer.valueOf(1), plan.getWithdraw().get(ItemID.POH_TABLET_TELEPORTTOHOUSE));
+		// The house is quicker than the cloak's walk to DJP.
+		Set<Integer> cloak = new HashSet<>(Collections.singleton(ItemID.ARDY_CAPE_ELITE));
+		plan = FarmPlan.compute(settings(EnumSet.of(Patch.FARMING_GUILD), FlowerSeed.NONE, AllotmentSeed.NONE, o), bank, cloak, a);
+		assertEquals(ItemID.POH_TABLET_TELEPORTTOHOUSE, stop(plan, Patch.FARMING_GUILD).getRingWay());
+		plan = FarmPlan.compute(settings(EnumSet.of(Patch.FARMING_GUILD), FlowerSeed.NONE, AllotmentSeed.NONE, o), new HashMap<>(), cloak, a);
+		assertEquals(ItemID.ARDY_CAPE_ELITE, stop(plan, Patch.FARMING_GUILD).getRingWay());
+
+		// A cape beats both; without a ring in your house, neither is used.
+		Set<Integer> worn = new HashSet<>(Collections.singleton(ItemID.SKILLCAPE_CONSTRUCTION));
+		plan = FarmPlan.compute(settings(EnumSet.of(Patch.FARMING_GUILD), FlowerSeed.NONE, AllotmentSeed.NONE, o), bank, worn, a);
+		assertEquals(ItemID.SKILLCAPE_CONSTRUCTION, stop(plan, Patch.FARMING_GUILD).getRingWay());
+		plan = FarmPlan.compute(settings(EnumSet.of(Patch.FARMING_GUILD), FlowerSeed.NONE, AllotmentSeed.NONE, o), bank, worn,
+			a.toBuilder().fairyHouse(false).build());
+		assertEquals(-1, stop(plan, Patch.FARMING_GUILD).getRingWay());
+	}
+
+	@Test
 	public void houseTeleportOnlyWhenHouseIsInHosidius()
 	{
 		Map<Integer, Integer> bank = new HashMap<>();

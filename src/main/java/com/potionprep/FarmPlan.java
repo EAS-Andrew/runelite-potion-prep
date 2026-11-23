@@ -162,6 +162,11 @@ public final class FarmPlan
 		/** Plots to do here besides the herb. */
 		boolean flowerToDo;
 		int allotmentsToDo;
+		/**
+		 * For a fairy ring: how you get to a ring. An item ({@link Farm#ringWay}, or a
+		 * house tab), {@link Farm#RING_SPELL} for Teleport to House, or -1.
+		 */
+		int ringWay;
 
 		public boolean isLocked()
 		{
@@ -300,8 +305,36 @@ public final class FarmPlan
 				allotmentsToDo += !growing || sideEmpty(side, 1 + i) ? 1 : 0;
 			}
 			boolean sideOnly = growing && (flowerToDo || allotmentsToDo > 0);
+			int ringWay = -1;
+			if (lock == null && (!growing || sideOnly) && problem == null && pick != null && pick.getKind() == Teleport.Kind.FAIRY)
+			{
+				// A fairy ring needs getting to. One in your house is quickest: a cape, a house
+				// tab or Teleport to House (budgeted like any other). Else an Ardougne cloak.
+				int tab = ItemID.POH_TABLET_TELEPORTTOHOUSE;
+				ringWay = acct.isFairyHouse() ? Farm.ringWay(owned, true) : -1;
+				if (ringWay != -1 && !Farm.ringInHouse(ringWay))
+				{
+					// Only a cloak: a tab or the spell beats the walk.
+					ringWay = -1;
+				}
+				if (ringWay == -1 && acct.isFairyHouse() && counts.getOrDefault(tab, 0) > tabletsUsed.getOrDefault(tab, 0))
+				{
+					ringWay = tab;
+					tabletsUsed.merge(tab, 1, Integer::sum);
+					tabletsNeeded.merge(tab, 1, Integer::sum);
+				}
+				else if (ringWay == -1 && acct.isFairyHouse() && canCastHouse(runes, acct))
+				{
+					ringWay = Farm.RING_SPELL;
+					runes.spend(Farm.HOUSE_SPELL);
+				}
+				if (ringWay == -1)
+				{
+					ringWay = Farm.ringCloak(owned);
+				}
+			}
 			stops.add(new Stop(p, pick, id, problem == null, manual != null, lock, auto, problem, status, growing,
-				sideOnly, flowerToDo, allotmentsToDo));
+				sideOnly, flowerToDo, allotmentsToDo, ringWay));
 
 			if (lock != null)
 			{
@@ -489,12 +522,10 @@ public final class FarmPlan
 			{
 				teleIds.add(st.getItemId());
 			}
-			// A fairy ring needs getting to: a cape to a ring in your house, or an Ardougne cloak.
-			int cloak = Farm.ringWay(owned, acct.isFairyHouse());
-			if (!st.isLocked() && (!st.isGrowing() || st.isSideOnly()) && st.getProblem() == null && st.getTeleport() != null
-				&& st.getTeleport().getKind() == Farm.Teleport.Kind.FAIRY && cloak != -1)
+			// A fairy ring needs getting to: the cape, cloak or tab that does it.
+			if (st.getRingWay() >= 0)
 			{
-				teleIds.add(cloak);
+				teleIds.add(st.getRingWay());
 			}
 		}
 		addRow(rows, new ArrayList<>(teleIds));

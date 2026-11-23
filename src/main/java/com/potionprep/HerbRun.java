@@ -73,6 +73,14 @@ public class HerbRun
 		private final List<Plot> plots;
 		/** You've been here this run. */
 		private boolean visited;
+		/** For a fairy ring: how to reach one (see {@link FarmPlan.Stop#getRingWay}). */
+		private int ringWay = -1;
+
+		Stop ring(int way)
+		{
+			ringWay = way;
+			return this;
+		}
 
 		Stop(Patch patch, String name, net.runelite.api.coords.WorldPoint point, Teleport teleport, int itemId, List<Plot> plots)
 		{
@@ -197,22 +205,22 @@ public class HerbRun
 					continue;
 				}
 				stops.add(new Stop(p, p.getName() + (apart != null ? " allotments" : ""), apart != null ? apart : PatchPlaces.point(p),
-					st.getTeleport(), st.getItemId(), others));
+					st.getTeleport(), st.getItemId(), others).ring(st.getRingWay()));
 			}
 			else if (apart != null && !others.isEmpty())
 			{
 				// The flower and allotments here are a walk from the herb patch: their own stop.
 				if (herbWorthIt)
 				{
-					stops.add(new Stop(p, p.getName(), PatchPlaces.point(p), st.getTeleport(), st.getItemId(), plots));
+					stops.add(new Stop(p, p.getName(), PatchPlaces.point(p), st.getTeleport(), st.getItemId(), plots).ring(st.getRingWay()));
 				}
 				stops.add(new Stop(p, p.getName() + " allotments", apart, herbWorthIt ? null : st.getTeleport(),
-					herbWorthIt ? -1 : st.getItemId(), others));
+					herbWorthIt ? -1 : st.getItemId(), others).ring(st.getRingWay()));
 			}
 			else
 			{
 				plots.addAll(others);
-				stops.add(new Stop(p, p.getName(), PatchPlaces.point(p), st.getTeleport(), st.getItemId(), plots));
+				stops.add(new Stop(p, p.getName(), PatchPlaces.point(p), st.getTeleport(), st.getItemId(), plots).ring(st.getRingWay()));
 			}
 		}
 		boolean compost = plan.isFertileSoil()
