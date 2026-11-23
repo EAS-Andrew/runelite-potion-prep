@@ -355,4 +355,16 @@ public interface PotionPrepConfig extends Config
 	{
 		return false;
 	}
+
+	@ConfigItem(
+		keyName = "fairyHouse",
+		name = "Fairy ring in house",
+		description = "Your house has a fairy ring (or spirit tree and fairy ring). Picked up on a visit to your house too.",
+		section = travelSection,
+		position = 15
+	)
+	default boolean fairyHouse()
+	{
+		return false;
+	}
 }

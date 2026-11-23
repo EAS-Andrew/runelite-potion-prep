@@ -424,10 +424,40 @@ final class Farm
 		return -1;
 	}
 
-	/** How to reach the ring and dial it, when you go by Ardougne cloak. */
-	static String viaCloak(Teleport t)
+	/** Unlimited ways into your house, for a fairy ring built there. */
+	static final int[] HOUSE_CAPES = {ItemID.SKILLCAPE_MAX, ItemID.SKILLCAPE_CONSTRUCTION_TRIMMED, ItemID.SKILLCAPE_CONSTRUCTION};
+
+	/**
+	 * The item to reach a fairy ring with, or -1: a cape into your house when
+	 * it has a ring (no walk), else an Ardougne cloak.
+	 */
+	static int ringWay(java.util.function.Predicate<Integer> owned, boolean houseRing)
 	{
-		return "Ardougne cloak: Monastery Teleport, walk east to the fairy ring, dial " + t.getName().replace("Fairy ring ", "");
+		if (houseRing)
+		{
+			for (int id : HOUSE_CAPES)
+			{
+				if (owned.test(id))
+				{
+					return id;
+				}
+			}
+		}
+		return ringCloak(owned);
+	}
+
+	/** Items that do the same job as this ring way: any cloak, or any house cape. */
+	static int[] ringWayKind(int way)
+	{
+		return java.util.Arrays.stream(HOUSE_CAPES).anyMatch(c -> c == way) ? HOUSE_CAPES : MONASTERY_CLOAKS;
+	}
+
+	/** How to reach the ring and dial it, going by {@code way} (from {@link #ringWay}). */
+	static String viaRing(int way, Teleport t)
+	{
+		String code = t.getName().replace("Fairy ring ", "");
+		return ringWayKind(way) == HOUSE_CAPES ? "Teleport to your house, use the fairy ring, dial " + code
+			: "Ardougne cloak: Monastery Teleport, walk east to the fairy ring, dial " + code;
 	}
 
 	/** Dramen or lunar staff, needed for fairy rings without the Lumbridge elite diary. */

@@ -580,20 +580,23 @@ public class PotionPrepPlugin extends Plugin
 		// teleport done: from there it's a walk, so the teleport needn't be pointed at.
 		net.runelite.api.coords.WorldPoint here = me != null ? me.getWorldLocation() : null;
 		net.runelite.api.WorldView view = client.getTopLevelWorldView();
-		if (stop != null && here != null && lastPos != null && view != null && !view.isInstance()
-			&& here.distanceTo2D(lastPos) > TELEPORT_JUMP && here.distanceTo2D(stop.getPoint()) < ARRIVED)
+		// Coming out of a raid or other instance (not your house) isn't a teleport you were told to take.
+		boolean jumped = here != null && lastPos != null && view != null && !view.isInstance()
+			&& here.distanceTo2D(lastPos) > TELEPORT_JUMP && (!lastInstance || lastHouse);
+		if (stop != null && jumped && here.distanceTo2D(stop.getPoint()) < ARRIVED)
 		{
 			teleportedTo = stop;
 		}
 		// Going by fairy ring: the Ardougne cloak first, to the Monastery by ring DJP.
 		int cloak = ringCloak(stop);
-		if (cloak != -1 && stop != teleportedTo && here != null && lastPos != null && view != null && !view.isInstance()
-			&& here.distanceTo2D(lastPos) > TELEPORT_JUMP)
+		if (cloak != -1 && stop != teleportedTo && jumped)
 		{
 			// Jumped, but not to the patch: at the ring now, so the cloak's done with.
 			atRing = stop;
 		}
 		lastPos = here;
+		lastInstance = view != null && view.isInstance();
+		lastHouse = houseScene;
 		boolean teleported = stop != null && stop == teleportedTo;
 		// The ring itself, once you're by one (after the cloak, or one was close anyway).
 		net.runelite.api.GameObject ring = null;
@@ -769,6 +772,8 @@ public class PotionPrepPlugin extends Plugin
 
 	/** Where the player was last tick, to spot a teleport. */
 	private net.runelite.api.coords.WorldPoint lastPos;
+	/** Last tick was in an instance, and whether that was a house. */
+	private boolean lastInstance, lastHouse;
 	/** A ring this close is walked to, not reached by cloak. */
 	private static final int RING_CLOSE = 25;
 	/** The stop being reached by the fairy ring in view, and that ring; null otherwise. */
@@ -785,8 +790,15 @@ public class PotionPrepPlugin extends Plugin
 		{
 			return -1;
 		}
-		return Farm.ringCloak(id -> invCounts.getOrDefault(id, 0) > 0 || wornIds.contains(id)
-			|| bankCounts != null && bankCounts.getOrDefault(id, 0) > 0);
+		return Farm.ringWay(id -> invCounts.getOrDefault(id, 0) > 0 || wornIds.contains(id)
+			|| bankCounts != null && bankCounts.getOrDefault(id, 0) > 0, houseRing());
+	}
+
+	/** Your house has a fairy ring: set in the config, or seen on a visit. */
+	private boolean houseRing()
+	{
+		return config.fairyHouse() || config.scanHouse()
+			&& Boolean.TRUE.equals(configManager.getRSProfileConfiguration(PotionPrepConfig.GROUP, "pohRing", Boolean.class));
 	}
 
 	/** The stop you've teleported to; its teleport highlights are done with. */
@@ -965,7 +977,8 @@ public class PotionPrepPlugin extends Plugin
 		if (ringIds.computeIfAbsent(o.getId(), i ->
 		{
 			net.runelite.api.ObjectComposition def = client.getObjectDefinition(i);
-			return def != null && "Fairy ring".equalsIgnoreCase(def.getName());
+			return i == ObjectID.POH_FAIRY_RING || i == ObjectID.POH_SPIRIT_RING
+				|| def != null && "Fairy ring".equalsIgnoreCase(def.getName());
 		}))
 		{
 			rings.add(o);
@@ -1165,7 +1178,7 @@ public class PotionPrepPlugin extends Plugin
 					}
 					else if (ringCloak(st) != -1 && st != atRing && st != ringFor)
 					{
-						detail.append(Farm.viaCloak(st.getTeleport()));
+						detail.append(Farm.viaRing(ringCloak(st), st.getTeleport()));
 					}
 					else
 					{
@@ -1547,12 +1560,13 @@ public class PotionPrepPlugin extends Plugin
 		}
 		boolean ring = fp.getStops().stream().anyMatch(st -> !st.isLocked() && (!st.isGrowing() || st.isSideOnly())
 			&& st.getProblem() == null && st.getTeleport() != null && st.getTeleport().getKind() == Farm.Teleport.Kind.FAIRY);
-		int cloak = Farm.ringCloak(id -> carried.getOrDefault(id, 0) > 0 || wornIds.contains(id)
-			|| bankCounts != null && bankCounts.getOrDefault(id, 0) > 0);
-		if (ring && cloak != -1 && !teles.contains(Farm.Teleport.ARDOUGNE_CLOAK)
-			&& Arrays.stream(Farm.MONASTERY_CLOAKS).noneMatch(has))
+		int way = Farm.ringWay(id -> carried.getOrDefault(id, 0) > 0 || wornIds.contains(id)
+			|| bankCounts != null && bankCounts.getOrDefault(id, 0) > 0, houseRing());
+		int[] kind = Farm.ringWayKind(way);
+		if (ring && way != -1 && !(kind == Farm.MONASTERY_CLOAKS && teles.contains(Farm.Teleport.ARDOUGNE_CLOAK))
+			&& Arrays.stream(kind).noneMatch(has))
 		{
-			out.add("Ardougne cloak");
+			out.add(kind == Farm.MONASTERY_CLOAKS ? "Ardougne cloak" : itemManager.getItemComposition(way).getName());
 		}
 		for (Farm.Teleport t : teles)
 		{
@@ -1598,6 +1612,7 @@ public class PotionPrepPlugin extends Plugin
 		return AccountReader.read(client, quests, fairyRings, portals(), wornIds, pouch).toBuilder()
 			.spiritTrees(spirits)
 			.spiritHouse(config.spiritHouse())
+			.fairyHouse(houseRing())
 			.seedVault(seedVault)
 			.bucketUses(Math.max(bucket().getUses(), 0))
 			.bucketType(bucket().getType())
@@ -1665,6 +1680,10 @@ public class PotionPrepPlugin extends Plugin
 
 	/** In a house this scene (its exit portal spawned). */
 	private boolean inHouse;
+	/** This scene is a house, for as long as it's loaded. */
+	private boolean houseScene;
+	/** The house in this scene has a fairy ring. */
+	private boolean houseHasRing;
 	private final Set<String> housePortals = new HashSet<>();
 
 	@Subscribe
@@ -1674,6 +1693,11 @@ public class PotionPrepPlugin extends Plugin
 		if (id == ObjectID.POH_EXIT_PORTAL)
 		{
 			inHouse = true;
+			houseScene = true;
+		}
+		if (id == ObjectID.POH_FAIRY_RING || id == ObjectID.POH_SPIRIT_RING)
+		{
+			houseHasRing = true;
 		}
 		track(event.getGameObject());
 		String portal = PORTAL_OBJECTS.get(id);
@@ -1735,6 +1759,11 @@ public class PotionPrepPlugin extends Plugin
 			return;
 		}
 		Set<String> saved = savedPortals();
+		if (!Boolean.valueOf(houseHasRing).equals(configManager.getRSProfileConfiguration(PotionPrepConfig.GROUP, "pohRing", Boolean.class)))
+		{
+			configManager.setRSProfileConfiguration(PotionPrepConfig.GROUP, "pohRing", houseHasRing);
+			farmDirty = true;
+		}
 		if (saved == null || !saved.equals(housePortals))
 		{
 			configManager.setRSProfileConfiguration(PotionPrepConfig.GROUP, "pohPortals",
@@ -2239,6 +2268,8 @@ public class PotionPrepPlugin extends Plugin
 		if (event.getGameState() == GameState.LOADING)
 		{
 			inHouse = false;
+			houseScene = false;
+			houseHasRing = false;
 			housePortals.clear();
 			herbPatches.clear();
 			rings.clear();
@@ -2250,6 +2281,8 @@ public class PotionPrepPlugin extends Plugin
 		}
 		if (event.getGameState() == GameState.LOGIN_SCREEN || event.getGameState() == GameState.HOPPING)
 		{
+			// Logging in somewhere else isn't a teleport.
+			lastPos = null;
 			if (event.getGameState() == GameState.LOGIN_SCREEN)
 			{
 				// Different account may log in next. A run in progress is kept for this
@@ -2290,7 +2323,7 @@ public class PotionPrepPlugin extends Plugin
 		if ("timetracking".equals(event.getGroup())
 			|| PotionPrepConfig.GROUP.equals(event.getGroup()) && event.getKey() != null
 			&& (event.getKey().startsWith("portal_") || event.getKey().startsWith("spirit")
-			|| "scanHouse".equals(event.getKey()) || "skipGrowing".equals(event.getKey())
+			|| "scanHouse".equals(event.getKey()) || "fairyHouse".equals(event.getKey()) || "skipGrowing".equals(event.getKey())
 			|| "saveRunes".equals(event.getKey())))
 		{
 			// Travel settings: rebuild on the next tick.

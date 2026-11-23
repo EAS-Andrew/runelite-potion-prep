@@ -84,6 +84,8 @@ public final class FarmPlan
 		Set<String> spiritTrees = Collections.emptySet();
 		/** Your house has a spirit tree (reach spirit trees via your house). */
 		boolean spiritHouse;
+		/** Your house has a fairy ring (alone or with a spirit tree). */
+		boolean fairyHouse;
 		/** Flower and allotment varbit values per patch from Time Tracking ({flower, allotment 1, allotment 2}, -1 unknown). */
 		@Builder.Default
 		Map<Patch, int[]> sidePlots = Collections.emptyMap();
@@ -487,8 +489,8 @@ public final class FarmPlan
 			{
 				teleIds.add(st.getItemId());
 			}
-			// A fairy ring needs getting to: an Ardougne cloak does it.
-			int cloak = Farm.ringCloak(owned);
+			// A fairy ring needs getting to: a cape to a ring in your house, or an Ardougne cloak.
+			int cloak = Farm.ringWay(owned, acct.isFairyHouse());
 			if (!st.isLocked() && (!st.isGrowing() || st.isSideOnly()) && st.getProblem() == null && st.getTeleport() != null
 				&& st.getTeleport().getKind() == Farm.Teleport.Kind.FAIRY && cloak != -1)
 			{
