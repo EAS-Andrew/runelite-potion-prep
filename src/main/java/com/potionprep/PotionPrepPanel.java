@@ -146,13 +146,17 @@ class PotionPrepPanel extends PluginPanel
 		ingredientsSection = potionFolds.add("ingredients", "Ingredients");
 		rowsPanel.setLayout(new BoxLayout(rowsPanel, BoxLayout.Y_AXIS));
 		rowsPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		ingredientsSection.body.add(stretch(rowsPanel));
+		// Added as is, not stretch(): its rows change, so its height must too.
+		rowsPanel.setAlignmentX(LEFT_ALIGNMENT);
+		ingredientsSection.body.add(rowsPanel);
 		ingredientsSection.body.add(Box.createVerticalStrut(10));
 
 		stepsSection = potionFolds.add("todo", "To do");
 		stepsPanel.setLayout(new BoxLayout(stepsPanel, BoxLayout.Y_AXIS));
 		stepsPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		stepsSection.body.add(stretch(stepsPanel));
+		// Added as is, not stretch(): its rows change, so its height must too.
+		stepsPanel.setAlignmentX(LEFT_ALIGNMENT);
+		stepsSection.body.add(stepsPanel);
 		stepsSection.body.add(Box.createVerticalStrut(10));
 
 		gearSection = potionFolds.add("gear", "Gear");

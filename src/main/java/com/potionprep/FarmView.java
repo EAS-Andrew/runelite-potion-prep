@@ -158,13 +158,17 @@ class FarmView extends JPanel
 		suppliesSection = folds.add("supplies", "Supplies");
 		suppliesPanel.setLayout(new BoxLayout(suppliesPanel, BoxLayout.Y_AXIS));
 		suppliesPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		suppliesSection.body.add(stretch(suppliesPanel));
+		// Added as is, not stretch(): its rows change, so its height must too.
+		suppliesPanel.setAlignmentX(LEFT_ALIGNMENT);
+		suppliesSection.body.add(suppliesPanel);
 		suppliesSection.body.add(Box.createVerticalStrut(10));
 
 		stepsSection = folds.add("todo", "To do");
 		stepsPanel.setLayout(new BoxLayout(stepsPanel, BoxLayout.Y_AXIS));
 		stepsPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		stepsSection.body.add(stretch(stepsPanel));
+		// Added as is, not stretch(): its rows change, so its height must too.
+		stepsPanel.setAlignmentX(LEFT_ALIGNMENT);
+		stepsSection.body.add(stepsPanel);
 		stepsSection.body.add(Box.createVerticalStrut(10));
 
 		gearSection = folds.add("gear", "Gear");
