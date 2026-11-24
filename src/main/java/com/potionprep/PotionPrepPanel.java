@@ -134,6 +134,24 @@ class PotionPrepPanel extends PluginPanel
 		makeableSub.setFont(FontManager.getRunescapeSmallFont());
 		makeableSub.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		summary.add(left(makeableSub));
+		// Clicking the picked potion opens or closes the list to pick another.
+		java.awt.event.MouseAdapter togglePicker = new java.awt.event.MouseAdapter()
+		{
+			@Override
+			public void mousePressed(java.awt.event.MouseEvent e)
+			{
+				if (javax.swing.SwingUtilities.isLeftMouseButton(e))
+				{
+					potionFolds.setOpen("potion", !potionFolds.isOpen("potion"));
+				}
+			}
+		};
+		// Labels with tooltips take their own clicks, so each part listens.
+		for (java.awt.Component c : new java.awt.Component[]{summary, top, selectedLabel, makeableLabel, makeableSub})
+		{
+			c.addMouseListener(togglePicker);
+			c.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+		}
 		content.add(stretch(summary));
 		content.add(Box.createVerticalStrut(6));
 
