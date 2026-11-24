@@ -544,7 +544,8 @@ final class Farm
 			// The spell works from anywhere; a fairy ring first needs getting to one.
 			Teleport.QUETZAL_WHISTLE, Teleport.FORTIS_SPELL, Teleport.FORTIS_TAB, Teleport.PORTAL_CIVITAS, Teleport.FAIRY_AJP),
 		ARDOUGNE("Ardougne", 2, true, 0, null, false,
-			Teleport.ARDOUGNE_CLOAK, Teleport.SKILLS_NECKLACE, Teleport.PORTAL_ARDOUGNE, Teleport.PORTAL_FISHING_GUILD,
+			// The Fishing Guild lands nearer the patch than Ardougne's market (Shortest Path landing tiles).
+			Teleport.ARDOUGNE_CLOAK, Teleport.SKILLS_NECKLACE, Teleport.PORTAL_FISHING_GUILD, Teleport.PORTAL_ARDOUGNE,
 			Teleport.FISHING_GUILD_SPELL, Teleport.FISHING_GUILD_TAB, Teleport.ARDOUGNE_SPELL, Teleport.ARDOUGNE_TAB,
 			Teleport.FAIRY_BLR),
 		CATHERBY("Catherby", 2, true, 0, null, false,
@@ -552,7 +553,8 @@ final class Farm
 			Teleport.CATHERBY_SPELL, Teleport.CATHERBY_TAB, Teleport.PORTAL_CATHERBY, Teleport.PORTAL_CAMELOT,
 			Teleport.CAMELOT_SPELL, Teleport.CAMELOT_TAB),
 		FALADOR("Falador", 2, true, 0, null, false,
-			Teleport.EXPLORERS_RING, Teleport.SPIRIT_PORT_SARIM, Teleport.PORTAL_FALADOR, Teleport.FALADOR_SPELL, Teleport.FALADOR_TAB, Teleport.GLORY),
+			// Draynor by glory is a shorter run than from Port Sarim or Falador square.
+			Teleport.EXPLORERS_RING, Teleport.GLORY, Teleport.SPIRIT_PORT_SARIM, Teleport.PORTAL_FALADOR, Teleport.FALADOR_SPELL, Teleport.FALADOR_TAB),
 		MORYTANIA("Port Phasmatys", 2, true, 0, Quest.PRIEST_IN_PERIL, false,
 			Teleport.ECTOPHIAL, Teleport.MORYTANIA_LEGS, Teleport.FAIRY_ALQ, Teleport.PORTAL_FENKENSTRAIN, Teleport.FENKENSTRAIN_SPELL,
 			Teleport.FENKENSTRAIN_TAB),
