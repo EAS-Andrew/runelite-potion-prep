@@ -48,6 +48,28 @@ final class Farm
 		private final int lowSave;
 		private final int grimyId;
 
+		/** A name short enough for a patch's status: "Snap", "Lanta", "Dwarf". */
+		String shortName()
+		{
+			switch (this)
+			{
+				case MARRENTILL:
+					return "Marren";
+				case HARRALANDER:
+					return "Harra";
+				case SNAPDRAGON:
+					return "Snap";
+				case CADANTINE:
+					return "Cadan";
+				case LANTADYME:
+					return "Lanta";
+				case DWARF_WEED:
+					return "Dwarf";
+				default:
+					return name;
+			}
+		}
+
 		HerbSeed(String name, int seedId, int level, int lowSave, int grimyId)
 		{
 			this.name = name;

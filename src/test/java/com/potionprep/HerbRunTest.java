@@ -171,6 +171,32 @@ public class HerbRunTest
 	}
 
 	@Test
+	public void eachAllotmentIsCreditedByTheOneUsed()
+	{
+		FarmPlan.Settings s = FarmPlan.Settings.builder().herb(HerbSeed.RANARR).flower(FlowerSeed.NONE)
+			.allotment(AllotmentSeed.SNAPE_GRASS).patches(EnumSet.of(Patch.FALADOR))
+			.overrides(Collections.emptyMap()).build();
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.SNAPE_GRASS_SEED, 6);
+		bank.put(ItemID.RANARR_SEED, 1);
+		bank.put(ItemID.BUCKET_ULTRACOMPOST, 3);
+		HerbRun r = HerbRun.from(FarmPlan.compute(s, bank, new HashSet<>(), 99), s, 0);
+		HerbRun.Stop st = r.current();
+		// The south allotment (varbit 2) planted then composted: the same plot, not the next one.
+		r.onMessage("You plant 3 snape grass seeds in the allotment.", 2);
+		r.onMessage("You treat the allotment with ultracompost.", 2);
+		HerbRun.Plot south = st.getPlots().get(1);
+		HerbRun.Plot north = st.getPlots().get(2);
+		assertEquals(2, south.getVarbit());
+		assertTrue(south.isPlanted() && south.isComposted());
+		assertFalse(north.isPlanted() || north.isComposted());
+		r.onMessage("You treat the allotment with ultracompost.", 1);
+		assertEquals(1, north.getVarbit());
+		assertTrue(north.isComposted());
+		assertFalse(north.isPlanted());
+	}
+
+	@Test
 	public void plotsWithoutSeedsDontHoldUpTheStop()
 	{
 		HerbRun r = run(false, FlowerSeed.LIMPWURT);

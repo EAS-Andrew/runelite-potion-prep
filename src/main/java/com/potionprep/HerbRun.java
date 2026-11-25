@@ -44,6 +44,8 @@ public class HerbRun
 		private boolean noSeeds;
 		/** Planned without a seed (you ran out): only there to pick or cure what's growing. */
 		private boolean harvestOnly;
+		/** For an allotment, the farming varbit of the one it turned out to be, once you've used it; -1 until then. */
+		private int varbit = -1;
 
 		/** Seeds one planting uses. */
 		int seedsPer()
@@ -427,6 +429,15 @@ public class HerbRun
 
 	boolean onMessage(String message)
 	{
+		return onMessage(message, -1);
+	}
+
+	/**
+	 * @param varbit the farming varbit of the patch you last used something on, or -1:
+	 *               says which of a location's allotments a message was about
+	 */
+	boolean onMessage(String message, int varbit)
+	{
 		if (PICK.matcher(message).find())
 		{
 			picked++;
@@ -440,12 +451,12 @@ public class HerbRun
 		Matcher m = PLANT.matcher(message);
 		if (m.find())
 		{
-			changed = credit(stop, type(m.group(1)), true);
+			changed = credit(stop, type(m.group(1)), true, varbit);
 		}
 		m = COMPOST.matcher(message);
 		if (m.find())
 		{
-			changed |= credit(stop, type(m.group(1)), false);
+			changed |= credit(stop, type(m.group(1)), false, varbit);
 		}
 		if (changed && stop.done(compost))
 		{
@@ -482,9 +493,34 @@ public class HerbRun
 		return changed;
 	}
 
-	/** Marks the first plot of this type still missing that step. */
-	private static boolean credit(Stop stop, PlotType type, boolean planted)
+	/**
+	 * Marks a plot of this type as having had that step: the allotment it was
+	 * done to when known, else the first still missing it.
+	 */
+	private static boolean credit(Stop stop, PlotType type, boolean planted, int varbit)
 	{
+		if (type == PlotType.ALLOTMENT && varbit != -1)
+		{
+			// The allotment used before (or the first not yet tied to one) is this one.
+			Plot to = stop.plots.stream().filter(p -> p.type == type && p.varbit == varbit).findFirst()
+				.orElseGet(() -> stop.plots.stream().filter(p -> p.type == type && p.varbit == -1
+					&& (planted ? !p.planted : !p.composted)).findFirst()
+				.orElseGet(() -> stop.plots.stream().filter(p -> p.type == type && p.varbit == -1).findFirst().orElse(null)));
+			if (to != null)
+			{
+				to.varbit = varbit;
+				boolean changed = planted ? !to.planted : !to.composted;
+				if (planted)
+				{
+					to.planted = true;
+				}
+				else
+				{
+					to.composted = true;
+				}
+				return changed;
+			}
+		}
 		for (Plot p : stop.plots)
 		{
 			if (p.type != type)

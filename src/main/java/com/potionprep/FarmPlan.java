@@ -207,6 +207,8 @@ public final class FarmPlan
 	private final HerbSeed herb;
 	/** Grimy herbs expected from this run's plantings, 0 if unknown. */
 	private final double expectedHerbs;
+	/** Grimy herbs expected from what's ready in the run's patches now, by herb (Time Tracking's view). */
+	private final Map<HerbSeed, Double> picking = new java.util.EnumMap<>(HerbSeed.class);
 	/** Snape grass and limpwurt roots expected from the allotments and flower patches planted. */
 	private double expectedSnape;
 	/** Compost comes from casting Fertile Soil, not items. */
@@ -569,6 +571,20 @@ public final class FarmPlan
 		}
 		FarmPlan plan = new FarmPlan(stops, supplies, steps, rows, s.getHerb(), expected, withdraw);
 		plan.fertileSoil = fertileSoil;
+		// What's ready to pick on this run. How it was composted isn't known: assume as this run.
+		for (Stop st : stops)
+		{
+			PatchStatus status = st.getStatus();
+			if (!st.isLocked() && !st.isGrowing() && !st.isSideOnly() && status != null
+				&& status.getState() == PatchStatus.State.READY && status.getCrop() != null)
+			{
+				double n = expectedHerbs(status.getCrop(), Collections.singletonList(st.getPatch()), acct, tier, owned, leprechaun);
+				if (n > 0)
+				{
+					plan.picking.merge(status.getCrop(), n, Double::sum);
+				}
+			}
+		}
 		if (acct.getFarming() > 0)
 		{
 			boolean secateurs = owned.test(Farm.MAGIC_SECATEURS) || leprechaun.getOrDefault(Farm.MAGIC_SECATEURS, 0) > 0;

@@ -27,12 +27,55 @@ public class PatchStatus
 	State state;
 	/** When a growing crop is ready, epoch seconds; 0 otherwise. */
 	long readyAt;
+	/** The herb growing, ready or diseased there, or null (empty, dead, weeds, goutweed, unknown). */
+	Farm.HerbSeed crop;
+
+	PatchStatus(State state, long readyAt)
+	{
+		this(state, readyAt, null);
+	}
+
+	PatchStatus(State state, long readyAt, Farm.HerbSeed crop)
+	{
+		this.state = state;
+		this.readyAt = readyAt;
+		this.crop = crop;
+	}
+
+	/** Herbs in the order of their growing values (Time Tracking's PatchImplementation.HERB). */
+	private static final Farm.HerbSeed[] BY_VALUE = {Farm.HerbSeed.GUAM, Farm.HerbSeed.MARRENTILL, Farm.HerbSeed.TARROMIN,
+		Farm.HerbSeed.HARRALANDER, Farm.HerbSeed.RANARR, Farm.HerbSeed.TOADFLAX, Farm.HerbSeed.IRIT, Farm.HerbSeed.AVANTOE,
+		Farm.HerbSeed.HUASCA, Farm.HerbSeed.KWUARM, Farm.HerbSeed.SNAPDRAGON, Farm.HerbSeed.CADANTINE, Farm.HerbSeed.LANTADYME,
+		Farm.HerbSeed.DWARF_WEED, Farm.HerbSeed.TORSTOL};
+	/** Diseased values come in threes from 128, guam to torstol (huasca's are 173 to 175). */
+	private static final Farm.HerbSeed[] DISEASED = {Farm.HerbSeed.GUAM, Farm.HerbSeed.MARRENTILL, Farm.HerbSeed.TARROMIN,
+		Farm.HerbSeed.HARRALANDER, Farm.HerbSeed.RANARR, Farm.HerbSeed.TOADFLAX, Farm.HerbSeed.IRIT, Farm.HerbSeed.AVANTOE,
+		Farm.HerbSeed.KWUARM, Farm.HerbSeed.SNAPDRAGON, Farm.HerbSeed.CADANTINE, Farm.HerbSeed.LANTADYME,
+		Farm.HerbSeed.DWARF_WEED, Farm.HerbSeed.TORSTOL};
+
+	/** The herb a herb patch varbit value shows (growing, ready or diseased), or null. */
+	static Farm.HerbSeed crop(int value)
+	{
+		for (int i = 0; i < BY_VALUE.length; i++)
+		{
+			// Each herb has 4 growing values then 3 harvestable ones.
+			if (value >= GROWING_STARTS[i] && value <= GROWING_STARTS[i] + 6)
+			{
+				return BY_VALUE[i];
+			}
+		}
+		if (value >= 128 && value <= 169)
+		{
+			return DISEASED[(value - 128) / 3];
+		}
+		return value >= 173 && value <= 175 ? Farm.HerbSeed.HUASCA : null;
+	}
 
 	/** Herbs grow in 20 minute ticks over 5 stages. */
 	static final int TICK_MINUTES = 20;
 	static final int STAGES = 5;
 
-	/** Start of each herb's 4 growing values (guam .. torstol, huasca, goutweed). */
+	/** Start of each herb's 4 growing values (guam .. avantoe, huasca, kwuarm .. torstol, goutweed). */
 	private static final int[] GROWING_STARTS = {4, 11, 18, 25, 32, 39, 46, 53, 60, 68, 75, 82, 89, 96, 103, 192};
 
 	/** The state a herb patch varbit value means, ignoring time. */
@@ -76,9 +119,10 @@ public class PatchStatus
 	static PatchStatus of(int value, long seen, Integer offsetMin, Integer precision, long now)
 	{
 		State state = decode(value);
+		Farm.HerbSeed crop = crop(value);
 		if (state != State.GROWING)
 		{
-			return new PatchStatus(state, 0);
+			return new PatchStatus(state, 0, state == State.READY || state == State.DISEASED ? crop : null);
 		}
 		int stage = -1;
 		for (int start : GROWING_STARTS)
@@ -89,7 +133,7 @@ public class PatchStatus
 			}
 		}
 		long readyAt = tickTime(STAGES - 1 - stage, seen, offsetMin, precision);
-		return readyAt <= now ? new PatchStatus(State.READY, 0) : new PatchStatus(State.GROWING, readyAt);
+		return readyAt <= now ? new PatchStatus(State.READY, 0, crop) : new PatchStatus(State.GROWING, readyAt, crop);
 	}
 
 	/** The growth tick {@code ticks} ticks after the one {@code at} falls in. */

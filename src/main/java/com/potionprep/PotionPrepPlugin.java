@@ -682,7 +682,8 @@ public class PotionPrepPlugin extends Plugin
 		mark(goal, stop == null ? null : ring != null ? "Fairy ring" : stop.getName());
 		// At the stop, outline the herb patch itself (no hint arrow: that's the game's).
 		// At the stop, outline every patch with something still to do, in whatever order you like.
-		scenePath.setOutline(atStop ? toDo(stop) : ring != null ? Collections.singletonList(ring) : Collections.emptyList());
+		scenePath.setOutline(atStop ? toDo(stop) : ring != null ? Collections.singletonList(ring) : Collections.emptyList(),
+			o -> patchVarbits.getOrDefault(o, -o.getId()));
 	}
 
 	/** Compost to hand: carried, or stored with the tool leprechaun (one at every patch). */
@@ -963,6 +964,8 @@ public class PotionPrepPlugin extends Plugin
 
 	/** The farming varbit each patch object shows (its impostor varbit), for patches found that way. */
 	private final Map<net.runelite.api.GameObject, Integer> patchVarbits = new HashMap<>();
+	/** The farming varbit of the patch last clicked or used an item on, -1 if none. */
+	private int lastPlotVarbit = -1;
 	private final Map<Integer, Integer> transmitIds = new HashMap<>();
 
 	/** Remember a patch object: by its farming varbit, or failing that its id or name. */
@@ -1082,14 +1085,51 @@ public class PotionPrepPlugin extends Plugin
 		{
 			out.add(herb);
 		}
+		// Allotments one by one: each is done when its own plot is, once you've used it.
+		Set<Integer> tied = new HashSet<>();
+		boolean untiedLeft = false;
+		int untied = 0;
+		for (HerbRun.Plot p : stop.getPlots())
+		{
+			if (p.getType() == HerbRun.PlotType.ALLOTMENT)
+			{
+				if (p.getVarbit() != -1)
+				{
+					tied.add(p.getVarbit());
+				}
+				else
+				{
+					untied++;
+					untiedLeft |= HerbRun.needsVisit(p, run.isCompost());
+				}
+			}
+		}
+		int[] side = PatchStatus.sideVarbits(stop.getPatch());
+		int freeAllotments = 0;
+		for (int i = 1; i < side.length; i++)
+		{
+			freeAllotments += tied.contains(side[i]) ? 0 : 1;
+		}
 		for (net.runelite.api.GameObject o : herbPatches.keySet())
 		{
 			HerbRun.PlotType type = typeAt(o, stop.getPatch());
-			if (type != null && type != HerbRun.PlotType.HERB && left.contains(type) && o.getPlane() == stop.getPoint().getPlane()
-				&& o.getWorldLocation().distanceTo2D(stop.getPoint()) <= 15)
+			if (type == null || type == HerbRun.PlotType.HERB || !left.contains(type) || o.getPlane() != stop.getPoint().getPlane()
+				|| o.getWorldLocation().distanceTo2D(stop.getPoint()) > 15)
 			{
-				out.add(o);
+				continue;
 			}
+			Integer v = patchVarbits.get(o);
+			if (type == HerbRun.PlotType.ALLOTMENT && v != null)
+			{
+				HerbRun.Plot mine = stop.getPlots().stream().filter(p -> p.getVarbit() == v).findFirst().orElse(null);
+				if (mine != null ? !HerbRun.needsVisit(mine, run.isCompost())
+					// Not used yet: one of the plots still to do, if it's empty or every free allotment is on the run.
+					: !untiedLeft || untied < freeAllotments && client.getVarbitValue(v) > 3)
+				{
+					continue;
+				}
+			}
+			out.add(o);
 		}
 		return out;
 	}
@@ -1786,6 +1826,22 @@ public class PotionPrepPlugin extends Plugin
 	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked event)
 	{
+		net.runelite.api.MenuAction action = event.getMenuAction();
+		if (action == net.runelite.api.MenuAction.WIDGET_TARGET_ON_GAME_OBJECT || action.name().startsWith("GAME_OBJECT_"))
+		{
+			// Which patch you're using things on: says which allotment a planting or compost message is about.
+			lastPlotVarbit = -1;
+			for (Map.Entry<net.runelite.api.GameObject, Integer> e : patchVarbits.entrySet())
+			{
+				net.runelite.api.GameObject o = e.getKey();
+				net.runelite.api.Point at = o.getSceneMinLocation();
+				if (o.getId() == event.getId() && at != null && at.getX() == event.getParam0() && at.getY() == event.getParam1())
+				{
+					lastPlotVarbit = e.getValue();
+					break;
+				}
+			}
+		}
 		if (event.getMenuAction() == net.runelite.api.MenuAction.WIDGET_TARGET_ON_GAME_OBJECT)
 		{
 			// Says whose compost the next "You treat..." message was.
@@ -1826,7 +1882,7 @@ public class PotionPrepPlugin extends Plugin
 		}
 		String msg = net.runelite.client.util.Text.removeTags(event.getMessage());
 		// Only credit the stop you're at, never one you've walked away from.
-		if (run != null && atStop && run.onMessage(msg))
+		if (run != null && atStop && run.onMessage(msg, lastPlotVarbit))
 		{
 			updateRunGuide();
 			pushToPanel(null);
@@ -2473,7 +2529,7 @@ public class PotionPrepPlugin extends Plugin
 		int herbs = (int) Math.round(fp.getExpectedHerbs());
 		int snape = (int) Math.round(fp.getExpectedSnape());
 		int roots = (int) Math.round(fp.getExpectedLimpwurt());
-		if (herbs <= 0 && snape <= 0 && roots <= 0)
+		if (herbs <= 0 && snape <= 0 && roots <= 0 && fp.getPicking().isEmpty())
 		{
 			return null;
 		}
@@ -2494,10 +2550,35 @@ public class PotionPrepPlugin extends Plugin
 		String head = "About " + String.join(", ", parts);
 
 		Map<Integer, Integer> after = new HashMap<>(counts);
-		after.merge(grimy, herbs, Integer::sum);
-		after.merge(ItemID.SNAPE_GRASS, snape, Integer::sum);
-		after.merge(ItemID.LIMPWURT_ROOT, roots, Integer::sum);
-		Set<Integer> grown = new HashSet<>(Arrays.asList(grimy, ItemID.SNAPE_GRASS, ItemID.LIMPWURT_ROOT));
+		Set<Integer> grown = new HashSet<>();
+		// Herbs ready in the patches now come first: they're what this run brings back.
+		String next = null;
+		Map<Farm.HerbSeed, Double> picking = fp.getPicking();
+		int picked = (int) Math.round(picking.values().stream().mapToDouble(Double::doubleValue).sum());
+		if (picked > 0)
+		{
+			List<String> herbsNow = new ArrayList<>();
+			picking.entrySet().stream().sorted((a, b) -> Double.compare(b.getValue(), a.getValue())).forEach(e ->
+			{
+				int n = (int) Math.round(e.getValue());
+				if (n > 0)
+				{
+					herbsNow.add(n + " " + Catalog.lower(e.getKey().getName()));
+					after.merge(e.getKey().getGrimyId(), n, Integer::sum);
+					grown.add(e.getKey().getGrimyId());
+				}
+			});
+			head = herbsNow.size() == 1 ? "Picking ~" + picked + " grimy " + herbsNow.get(0).replaceFirst("^\\d+ ", "")
+				: "Picking ~" + picked + " grimy: " + String.join(", ", herbsNow);
+			next = parts.isEmpty() ? "Nothing planted for next time" : "Next run ~" + String.join(", ", parts);
+		}
+		else
+		{
+			after.merge(grimy, herbs, Integer::sum);
+			after.merge(ItemID.SNAPE_GRASS, snape, Integer::sum);
+			after.merge(ItemID.LIMPWURT_ROOT, roots, Integer::sum);
+			grown.addAll(Arrays.asList(grimy, ItemID.SNAPE_GRASS, ItemID.LIMPWURT_ROOT));
+		}
 		int lvl = herblore > 0 ? herblore : 0;
 
 		// The selected potion if it uses any of it, else the one this run adds the most to.
@@ -2525,10 +2606,10 @@ public class PotionPrepPlugin extends Plugin
 		}
 		if (target == null)
 		{
-			return new String[]{head, null};
+			return new String[]{head, null, next};
 		}
 		int more = target.toPotions(PotionPlan.makeable(target, after, lvl)) - target.toPotions(PotionPlan.makeable(target, counts, lvl));
-		return new String[]{head, more > 0 ? "+" + more + " " + target.potionName() + " with what you have" : null};
+		return new String[]{head, more > 0 ? "+" + more + " " + target.potionName() + " with what you have" : null, next};
 	}
 
 	private static String ago(long at)

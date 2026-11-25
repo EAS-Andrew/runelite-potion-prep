@@ -55,6 +55,8 @@ class FarmView extends JPanel
 	private final JPanel stepsPanel = new JPanel();
 	private final JLabel statusLabel = new JLabel();
 	private final JPanel harvestBox = new JPanel();
+	private static final String PLANTING_TIP = "Expected from this run's plantings: Farming level, compost, magic secateurs, "
+		+ "Farming cape, diaries and the chance of disease";
 	private final javax.swing.JButton startRun = new javax.swing.JButton("Start run");
 	private final javax.swing.JButton skipStop = new javax.swing.JButton("Skip patch");
 	private final javax.swing.JButton stopRun = new javax.swing.JButton("Stop run");
@@ -69,6 +71,8 @@ class FarmView extends JPanel
 	private Folds.Section gearSection;
 	private final JLabel harvestLabel = new JLabel();
 	private final JLabel harvestSub = new JLabel();
+	/** Under what's picked this run: what this run's plantings should give next time. */
+	private final JLabel harvestNext = new JLabel();
 	/** Seeds you have (bank, inventory, seed vault) and your Farming level, for the dropdowns. */
 	private Map<Integer, Integer> seedCounts = java.util.Collections.emptyMap();
 	/** Patches on the run of each kind, to colour seed counts by whether they're enough. */
@@ -116,12 +120,15 @@ class FarmView extends JPanel
 		harvestBox.setBorder(new EmptyBorder(6, 8, 6, 8));
 		harvestLabel.setFont(FontManager.getRunescapeBoldFont());
 		harvestLabel.setForeground(GOOD);
-		harvestLabel.setToolTipText("Expected from this run's plantings: Farming level, compost, magic secateurs, "
-			+ "Farming cape, diaries and the chance of disease");
+
 		harvestSub.setFont(FontManager.getRunescapeSmallFont());
 		harvestSub.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		harvestBox.add(left(harvestLabel));
 		harvestBox.add(left(harvestSub));
+		harvestNext.setFont(FontManager.getRunescapeSmallFont());
+		harvestNext.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		harvestNext.setToolTipText(PLANTING_TIP);
+		harvestBox.add(left(harvestNext));
 		harvestBox.setVisible(false);
 		// Not stretch(): its text changes, so its height must too.
 		harvestBox.setAlignmentX(LEFT_ALIGNMENT);
@@ -213,6 +220,12 @@ class FarmView extends JPanel
 			harvestLabel.setText(wrap(harvest[0]));
 			harvestSub.setText(harvest[1] != null ? wrap(harvest[1]) : "");
 			harvestSub.setVisible(harvest[1] != null);
+			// {head, potions, next run}: with a next-run line, the head is what's picked now.
+			boolean picking = harvest.length > 2 && harvest[2] != null;
+			harvestNext.setText(picking ? wrap(harvest[2]) : "");
+			harvestNext.setVisible(picking);
+			harvestLabel.setToolTipText(picking ? "Expected from the herbs ready in your patches, as Time Tracking last saw "
+				+ "them, composted as this run" : PLANTING_TIP);
 		}
 		updating = true;
 		try
@@ -418,20 +431,28 @@ class FarmView extends JPanel
 		{
 			return;
 		}
+		l.setToolTipText(null);
+		// The herb there, when known: "Ranarr ready", "Snap 40m", "Diseased irit".
+		Farm.HerbSeed crop = st.getCrop();
+		String herb = crop != null ? crop.shortName() : null;
+		if (crop != null)
+		{
+			l.setToolTipText(crop.getName());
+		}
 		switch (st.getState())
 		{
 			case READY:
-				l.setText("Ready");
+				l.setText(herb != null ? herb + " ready" : "Ready");
 				l.setForeground(GOOD);
 				break;
 			case GROWING:
-				l.setText(FarmPlan.minutes(st.getReadyAt() - now));
+				l.setText((herb != null ? herb + " " : "") + FarmPlan.minutes(st.getReadyAt() - now));
 				l.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
-				l.setToolTipText("Still growing" + (stop.isSideOnly() ? ", visited for the flower or allotments"
-					: stop.isGrowing() ? ", left out of this run" : ""));
+				l.setToolTipText((crop != null ? crop.getName() + ", still growing" : "Still growing")
+					+ (stop.isSideOnly() ? ", visited for the flower or allotments" : stop.isGrowing() ? ", left out of this run" : ""));
 				break;
 			case DISEASED:
-				l.setText("Diseased");
+				l.setText(herb != null ? "Diseased " + herb.toLowerCase() : "Diseased");
 				l.setForeground(ACTION);
 				break;
 			case DEAD:

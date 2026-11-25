@@ -26,7 +26,7 @@ repositories {
 	mavenCentral()
 }
 
-def runeLiteVersion = '1.13.7'
+def runeLiteVersion = '1.13.8'
 
 dependencies {
 	compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
@@ -42,7 +42,7 @@ dependencies {
 }
 
 group = 'com.potionprep'
-version = '2.0.7'
+version = '2.0.8'
 
 tasks.withType(JavaCompile).configureEach {
 	// RuneLite plugins target Java 11. Compiling with --release (rather than

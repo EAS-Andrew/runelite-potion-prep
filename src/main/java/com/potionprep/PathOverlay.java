@@ -41,8 +41,18 @@ class PathOverlay extends Overlay
 		this.tiles = tiles;
 	}
 
+	/** Which patch an object is part of: pieces with the same key that touch are outlined as one. */
+	private volatile java.util.function.ToIntFunction<net.runelite.api.GameObject> key = net.runelite.api.GameObject::getId;
+
 	void setOutline(List<net.runelite.api.GameObject> objects)
 	{
+		setOutline(objects, net.runelite.api.GameObject::getId);
+	}
+
+	/** @param key the patch each object belongs to (its farming varbit), so neighbouring allotments stay apart */
+	void setOutline(List<net.runelite.api.GameObject> objects, java.util.function.ToIntFunction<net.runelite.api.GameObject> key)
+	{
+		this.key = key;
 		this.outline = objects;
 	}
 
@@ -77,10 +87,85 @@ class PathOverlay extends Overlay
 	}
 
 	/**
+	 * The tiles an object covers, in local coordinates: what a patch is, however
+	 * it's planted (a crop's model is the plants, not the patch). Pieces of one
+	 * patch join up, so an L-shaped allotment stays an L. Null if unknown.
+	 */
+	private static java.awt.geom.Area footprint(net.runelite.api.GameObject o)
+	{
+		Point min = o.getSceneMinLocation();
+		Point max = o.getSceneMaxLocation();
+		if (min == null || max == null)
+		{
+			return null;
+		}
+		// A tile is 128 local units.
+		return new java.awt.geom.Area(new java.awt.Rectangle(min.getX() * 128, min.getY() * 128,
+			(max.getX() - min.getX() + 1) * 128, (max.getY() - min.getY() + 1) * 128));
+	}
+
+	/** A footprint (local coordinates) drawn on the ground, following the terrain; null if off screen. */
+	private java.awt.Shape onGround(java.awt.geom.Area area, int plane)
+	{
+		WorldView wv = client.getTopLevelWorldView();
+		if (wv == null)
+		{
+			return null;
+		}
+		java.awt.geom.Path2D.Float out = new java.awt.geom.Path2D.Float();
+		boolean open = false;
+		boolean any = false;
+		float[] c = new float[6];
+		float lastX = 0;
+		float lastY = 0;
+		for (java.awt.geom.PathIterator it = area.getPathIterator(null); !it.isDone(); it.next())
+		{
+			int seg = it.currentSegment(c);
+			if (seg == java.awt.geom.PathIterator.SEG_CLOSE)
+			{
+				if (open)
+				{
+					out.closePath();
+				}
+				open = false;
+				continue;
+			}
+			// Long edges go in half-tile steps, so the line follows the ground over slopes.
+			int steps = seg == java.awt.geom.PathIterator.SEG_MOVETO ? 1
+				: Math.max(1, (int) Math.ceil(Math.max(Math.abs(c[0] - lastX), Math.abs(c[1] - lastY)) / 64));
+			for (int i = 1; i <= steps; i++)
+			{
+				float x = seg == java.awt.geom.PathIterator.SEG_MOVETO ? c[0] : lastX + (c[0] - lastX) * i / steps;
+				float y = seg == java.awt.geom.PathIterator.SEG_MOVETO ? c[1] : lastY + (c[1] - lastY) * i / steps;
+				Point p = Perspective.localToCanvas(client, new LocalPoint(Math.round(x), Math.round(y), wv), plane);
+				if (p == null)
+				{
+					open = false;
+					continue;
+				}
+				if (open && seg != java.awt.geom.PathIterator.SEG_MOVETO)
+				{
+					out.lineTo(p.getX(), p.getY());
+				}
+				else
+				{
+					out.moveTo(p.getX(), p.getY());
+					open = true;
+				}
+				any = true;
+			}
+			lastX = c[0];
+			lastY = c[1];
+		}
+		return any ? out : null;
+	}
+
+	/**
 	 * Objects of the same id that touch (within a tile of each other) are one
 	 * patch: an allotment can be made of several pieces.
 	 */
-	private static List<List<net.runelite.api.GameObject>> groups(List<net.runelite.api.GameObject> objects)
+	private static List<List<net.runelite.api.GameObject>> groups(List<net.runelite.api.GameObject> objects,
+		java.util.function.ToIntFunction<net.runelite.api.GameObject> key)
 	{
 		List<List<net.runelite.api.GameObject>> out = new java.util.ArrayList<>();
 		for (net.runelite.api.GameObject o : objects)
@@ -89,7 +174,7 @@ class PathOverlay extends Overlay
 			for (java.util.Iterator<List<net.runelite.api.GameObject>> it = out.iterator(); it.hasNext(); )
 			{
 				List<net.runelite.api.GameObject> g = it.next();
-				if (g.stream().anyMatch(x -> x.getPlane() == o.getPlane() && touches(x, o)))
+				if (g.stream().anyMatch(x -> x.getPlane() == o.getPlane() && key.applyAsInt(x) == key.applyAsInt(o) && touches(x, o)))
 				{
 					if (into == null)
 					{
@@ -119,8 +204,8 @@ class PathOverlay extends Overlay
 		Point a1 = a.getSceneMaxLocation();
 		Point b0 = b.getSceneMinLocation();
 		Point b1 = b.getSceneMaxLocation();
-		// Pieces of one patch share an id; a neighbouring different patch doesn't join.
-		return a.getId() == b.getId() && a0 != null && a1 != null && b0 != null && b1 != null
+		// Pieces of one patch share a key; a neighbouring different patch doesn't join.
+		return a0 != null && a1 != null && b0 != null && b1 != null
 			&& b0.getX() <= a1.getX() + 1 && a0.getX() <= b1.getX() + 1
 			&& b0.getY() <= a1.getY() + 1 && a0.getY() <= b1.getY() + 1;
 	}
@@ -168,15 +253,37 @@ class PathOverlay extends Overlay
 	@Override
 	public Dimension render(Graphics2D g)
 	{
-		for (List<net.runelite.api.GameObject> group : minimap ? Collections.<List<net.runelite.api.GameObject>>emptyList() : groups(outline))
+		for (List<net.runelite.api.GameObject> group : minimap ? Collections.<List<net.runelite.api.GameObject>>emptyList() : groups(outline, key))
 		{
-			// One smooth shape per patch, on the ground: a growing crop's model is the plant, not the patch.
-			List<int[]> pts = new java.util.ArrayList<>();
+			// One shape per patch, on the ground: its pieces' footprints joined, so an L stays an L.
+			java.awt.geom.Area area = new java.awt.geom.Area();
+			boolean traced = true;
 			for (net.runelite.api.GameObject o : group)
 			{
-				groundPoints(o, pts);
+				java.awt.geom.Area fp = footprint(o);
+				if (fp == null)
+				{
+					traced = false;
+					break;
+				}
+				area.add(fp);
 			}
-			java.awt.Shape hull = hull(pts);
+			if (traced && !area.isEmpty())
+			{
+				// Just inside the tiles' edges, once the pieces are joined.
+				area.subtract(new java.awt.geom.Area(new BasicStroke(12).createStrokedShape(area)));
+			}
+			java.awt.Shape hull = traced && !area.isEmpty() ? onGround(area, group.get(0).getPlane()) : null;
+			if (hull == null)
+			{
+				// No model to trace: the convex outline of its points.
+				List<int[]> pts = new java.util.ArrayList<>();
+				for (net.runelite.api.GameObject o : group)
+				{
+					groundPoints(o, pts);
+				}
+				hull = hull(pts);
+			}
 			if (hull == null && !group.isEmpty())
 			{
 				// No model to flatten: the game's own outline of the object is better than nothing.

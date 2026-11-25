@@ -37,4 +37,24 @@ public class PatchStatusTest
 		// Long since: predicted ready.
 		assertEquals(State.READY, PatchStatus.of(32, seen, null, null, seen + 5 * 1200).getState());
 	}
+
+	@Test
+	public void cropFromValue()
+	{
+		assertEquals(Farm.HerbSeed.GUAM, PatchStatus.crop(4));
+		assertEquals(Farm.HerbSeed.RANARR, PatchStatus.crop(38));
+		assertEquals(Farm.HerbSeed.HUASCA, PatchStatus.crop(62));
+		assertEquals(Farm.HerbSeed.KWUARM, PatchStatus.crop(68));
+		assertEquals(Farm.HerbSeed.TORSTOL, PatchStatus.crop(109));
+		// Diseased: threes from 128 (no huasca), then huasca's own.
+		assertEquals(Farm.HerbSeed.GUAM, PatchStatus.crop(128));
+		assertEquals(Farm.HerbSeed.KWUARM, PatchStatus.crop(152));
+		assertEquals(Farm.HerbSeed.TORSTOL, PatchStatus.crop(169));
+		assertEquals(Farm.HerbSeed.HUASCA, PatchStatus.crop(174));
+		assertEquals(null, PatchStatus.crop(3));
+		assertEquals(null, PatchStatus.crop(67));
+		assertEquals(null, PatchStatus.crop(171));
+		assertEquals(null, PatchStatus.crop(194));
+		assertEquals(Farm.HerbSeed.SNAPDRAGON, PatchStatus.of(80, 0, null, null, 100).getCrop());
+	}
 }

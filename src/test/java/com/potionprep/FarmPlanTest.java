@@ -340,6 +340,24 @@ public class FarmPlanTest
 	}
 
 	@Test
+	public void picksWhatsReadyByHerb()
+	{
+		Map<Patch, PatchStatus> status = new EnumMap<>(Patch.class);
+		status.put(Patch.FALADOR, PatchStatus.of(37, 0, null, null, 100));
+		status.put(Patch.CATHERBY, PatchStatus.of(108, 0, null, null, 100));
+		status.put(Patch.ARDOUGNE, PatchStatus.of(140, 0, null, null, 100));
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.RANARR_SEED, 3);
+		FarmPlan plan = FarmPlan.compute(settings(EnumSet.of(Patch.FALADOR, Patch.CATHERBY, Patch.ARDOUGNE), FlowerSeed.NONE,
+			AllotmentSeed.NONE, Collections.emptyMap()), bank, new HashSet<>(),
+			FarmPlan.Account.builder().farming(99).patchStatus(status).build());
+		// Ready ranarr and torstol are picked; the diseased ranarr isn't ready to pick.
+		assertEquals(2, plan.getPicking().size());
+		assertTrue(plan.getPicking().get(HerbSeed.RANARR) > 2);
+		assertTrue(plan.getPicking().get(HerbSeed.TORSTOL) > 2);
+	}
+
+	@Test
 	public void houseTeleportOnlyWhenHouseIsInHosidius()
 	{
 		Map<Integer, Integer> bank = new HashMap<>();
