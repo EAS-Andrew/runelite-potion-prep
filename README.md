@@ -118,6 +118,7 @@ Attack, Antipoison, Strength, Restore, Compost, Energy, Defence, Agility, Combat
 - Needs the core **Bank Tags** plugin, which is on by default.
 - Only how the bank is drawn changes. Nothing is moved, clicked or withdrawn for you.
 - Potion storage is counted each time you open the bank.
+- Your bank, potion storage and seed vault are remembered per account when you close them, so counts and plans work straight after a restart. Opening the bank updates them.
 - Crushing a lava scale gives 3 to 6 shards. Counts assume 3.
 - Quetzal whistle and Xeric's talisman charges come from their chat messages. Check them once so the plugin knows.
 

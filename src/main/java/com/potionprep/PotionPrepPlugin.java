@@ -229,6 +229,7 @@ public class PotionPrepPlugin extends Plugin
 				seedBox = box != null ? count(box) : new HashMap<>();
 				readInventory(client.getItemContainer(InventoryID.INV));
 				readBank(client.getItemContainer(InventoryID.BANK));
+				loadAccount();
 			}
 			select(saved != null ? saved : Potion.PRAYER, false);
 		});
@@ -268,6 +269,99 @@ public class PotionPrepPlugin extends Plugin
 	}
 
 	/**
+	 * Remember what the bank, potion storage and seed vault held, for this
+	 * account, so the plugin works after a restart without opening the bank.
+	 * Opening the bank replaces it with what's really there.
+	 */
+	private void saveAccount()
+	{
+		if (bankCounts == null || configManager.getRSProfileKey() == null)
+		{
+			return;
+		}
+		configManager.setRSProfileConfiguration(PotionPrepConfig.GROUP, "savedBank", encode(bankCounts));
+		configManager.setRSProfileConfiguration(PotionPrepConfig.GROUP, "savedStorage", encode(storageCounts));
+		Map<Integer, Integer> holders = new HashMap<>();
+		bankPlaceholders.forEach(id -> holders.put(id, 0));
+		configManager.setRSProfileConfiguration(PotionPrepConfig.GROUP, "savedPlaceholders", encode(holders));
+		configManager.setRSProfileConfiguration(PotionPrepConfig.GROUP, "savedBankAt", bankObservedAt);
+	}
+
+	/** What {@link #saveAccount} remembered, while the bank hasn't been seen this session. */
+	private void loadAccount()
+	{
+		if (configManager.getRSProfileKey() == null)
+		{
+			return;
+		}
+		Map<Integer, Integer> vault = decode(configManager.getRSProfileConfiguration(PotionPrepConfig.GROUP, "savedVault"));
+		if (seedVault.isEmpty() && vault != null)
+		{
+			seedVault = vault;
+		}
+		Map<Integer, Integer> bank = decode(configManager.getRSProfileConfiguration(PotionPrepConfig.GROUP, "savedBank"));
+		if (bankCounts != null || bank == null)
+		{
+			farmDirty = true;
+			pushToPanel(null);
+			return;
+		}
+		bankCounts = bank;
+		Map<Integer, Integer> storage = decode(configManager.getRSProfileConfiguration(PotionPrepConfig.GROUP, "savedStorage"));
+		storageCounts = storage != null ? storage : new HashMap<>();
+		Map<Integer, Integer> holders = decode(configManager.getRSProfileConfiguration(PotionPrepConfig.GROUP, "savedPlaceholders"));
+		bankPlaceholders.clear();
+		if (holders != null)
+		{
+			bankPlaceholders.addAll(holders.keySet());
+		}
+		Long at = configManager.getRSProfileConfiguration(PotionPrepConfig.GROUP, "savedBankAt", Long.class);
+		bankObservedAt = at != null ? at : 0;
+		farmDirty = true;
+		relayout();
+		pushToPanel(null);
+	}
+
+	/** "id:qty,id:qty" (empty map: "-"). */
+	static String encode(Map<Integer, Integer> counts)
+	{
+		if (counts.isEmpty())
+		{
+			return "-";
+		}
+		StringBuilder sb = new StringBuilder();
+		counts.forEach((id, n) -> sb.append(sb.length() > 0 ? "," : "").append(id).append(':').append(n));
+		return sb.toString();
+	}
+
+	/** The map {@link #encode} wrote, or null if there's nothing (or nothing readable). */
+	static Map<Integer, Integer> decode(String v)
+	{
+		if (v == null || v.isEmpty())
+		{
+			return null;
+		}
+		Map<Integer, Integer> out = new HashMap<>();
+		if (v.equals("-"))
+		{
+			return out;
+		}
+		try
+		{
+			for (String part : v.split(","))
+			{
+				String[] kv = part.split(":");
+				out.put(Integer.parseInt(kv[0]), Integer.parseInt(kv[1]));
+			}
+		}
+		catch (NumberFormatException | ArrayIndexOutOfBoundsException e)
+		{
+			return null;
+		}
+		return out;
+	}
+
+	/**
 	 * Forget everything about the logged-in account: another one may be next
 	 * (logout, or the plugin turned off and back on after switching).
 	 */
@@ -296,9 +390,10 @@ public class PotionPrepPlugin extends Plugin
 	@Subscribe
 	public void onRuneScapeProfileChanged(net.runelite.client.events.RuneScapeProfileChanged event)
 	{
-		// Per-account saved state (the bucket) is reloaded for the new profile.
+		// Per-account saved state (the bucket, the last bank seen) is reloaded for the new profile.
 		bucket = null;
 		seedVault = new HashMap<>();
+		clientThread.invokeLater(this::loadAccount);
 		farmDirty = true;
 	}
 
@@ -2248,6 +2343,7 @@ public class PotionPrepPlugin extends Plugin
 		if (event.getGroupId() == InterfaceID.BANKMAIN)
 		{
 			shownThisVisit = false;
+			saveAccount();
 			// Closing the bank before the run's first patch: a last check you've got everything.
 			List<String> missing = farmMode() ? notCarried(farmPlan) : Collections.emptyList();
 			if (!missing.isEmpty())
@@ -2286,6 +2382,7 @@ public class PotionPrepPlugin extends Plugin
 		{
 			seedVault = count(event.getItemContainer());
 			farmDirty = true;
+			configManager.setRSProfileConfiguration(PotionPrepConfig.GROUP, "savedVault", encode(seedVault));
 		}
 		else if (event.getContainerId() == InventoryID.INV)
 		{
@@ -2347,6 +2444,8 @@ public class PotionPrepPlugin extends Plugin
 			lastPos = null;
 			if (event.getGameState() == GameState.LOGIN_SCREEN)
 			{
+				// Logged out with the bank open: still remember it.
+				saveAccount();
 				// Different account may log in next. A run in progress is kept for this
 				// account, so a disconnect or quick relog carries on where it was.
 				pausedRun = run;
@@ -2620,7 +2719,7 @@ public class PotionPrepPlugin extends Plugin
 			return "just now";
 		}
 		long m = s / 60;
-		return m < 60 ? m + " min ago" : (m / 60) + " h ago";
+		return m < 60 ? m + " min ago" : m < 48 * 60 ? (m / 60) + " h ago" : (m / 60 / 24) + " days ago";
 	}
 
 	private static Potion parse(String name)
