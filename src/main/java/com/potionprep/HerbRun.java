@@ -512,6 +512,23 @@ public class HerbRun
 			return false;
 		}
 		boolean changed = false;
+		// An allotment you haven't been tied to yet going from empty to growing is you planting it,
+		// even before the chat message says so: it's this plot now.
+		for (Plot p : stop.plots)
+		{
+			if (p.type == PlotType.ALLOTMENT && p.varbit == -1 && p.shown != -1 && p.task == PatchStatus.Task.PLANT && !p.planted)
+			{
+				for (int i = 0; i < allotVarbits.length; i++)
+				{
+					if (allotVarbits[i] == p.shown && allot[i] == PatchStatus.Task.GROWING)
+					{
+						p.varbit = p.shown;
+						p.planted = true;
+						changed = true;
+					}
+				}
+			}
+		}
 		List<Integer> free = new ArrayList<>();
 		for (int i = 0; i < allotVarbits.length; i++)
 		{

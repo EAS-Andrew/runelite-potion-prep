@@ -34,7 +34,7 @@ With RuneLite's **Time Tracking** plugin on, each patch shows what's growing the
 
 - Red **Lv** means your Herblore level is too low.
 - An orange count means you can make it with a botanical pie (+4 Herblore). The pie gets its own row in the bank, and the first step tells you to eat it.
-- Hover a tile for the Herblore XP from everything you can make, including cleaning herbs and potions made along the way.
+- Hover a tile for the Herblore XP from everything you can make, including cleaning herbs and potions made along the way, and how many of each ingredient you have (unf potions and potion storage included), without picking it.
 - Potions made a dose at a time keep the dose of what they're made from, so 100 super energy(3) make 100 stamina(3).
 
 ### Bank layout

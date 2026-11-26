@@ -2804,6 +2804,10 @@ public class PotionPrepPlugin extends Plugin
 			}
 		}
 		int lvl = boosted;
+		// For a tile's tooltip: what you have for that potion, without picking it.
+		int herb = herbloreLevel;
+		java.util.function.Function<Potion, PotionPlan> planFor = pt -> PotionPlan.compute(pt, counts,
+			PotionPlan.effectiveLevel(pt, herb, boosted), PotionPlan.needsPie(pt, herb, boosted));
 		String status = notice != null ? notice
 			: runDone != null ? runDone
 			: bankCounts == null ? "Open your bank to scan it"
@@ -2825,7 +2829,7 @@ public class PotionPrepPlugin extends Plugin
 		int farming = farmingLevel;
 		SwingUtilities.invokeLater(() ->
 		{
-			p.update(plan, status, makeable, xp, lvl, pie, showing);
+			p.update(plan, status, makeable, xp, lvl, pie, showing, planFor);
 			p.updateFarm(fp, fs, status, showing, farm, harvest, seeds, farming);
 			p.setGearSaved(potionsGear, farmGear);
 			p.setRun(rows);

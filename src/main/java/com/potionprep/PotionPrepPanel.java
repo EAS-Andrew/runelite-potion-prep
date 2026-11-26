@@ -238,11 +238,12 @@ class PotionPrepPanel extends PluginPanel
 		farmView.update(plan, settings, status, showingInBank, harvest, seedCounts, farmingLevel);
 	}
 
-	void update(PotionPlan plan, String status, Map<Potion, Integer> makeable, Map<Potion, Double> xp, int boostedLevel, Set<Potion> pie, boolean showingInBank)
+	void update(PotionPlan plan, String status, Map<Potion, Integer> makeable, Map<Potion, Double> xp, int boostedLevel, Set<Potion> pie,
+		boolean showingInBank, java.util.function.Function<Potion, PotionPlan> planFor)
 	{
 		showToggle.setSelected(showingInBank);
 		grid.setSelected(plan.getPotion());
-		grid.setStats(makeable, xp, boostedLevel, pie);
+		grid.setStats(makeable, xp, boostedLevel, pie, planFor);
 		Potion potion = plan.getPotion();
 		// Counts are whole potions; made-a-dose-at-a-time potions keep their base's dose.
 		int n = plan.getMakeable();

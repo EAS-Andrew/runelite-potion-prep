@@ -226,6 +226,31 @@ public class HerbRunTest
 	}
 
 	@Test
+	public void plantingBeforeTheMessageStillWaitsForCompost()
+	{
+		FarmPlan.Settings s = FarmPlan.Settings.builder().herb(HerbSeed.RANARR).flower(FlowerSeed.NONE)
+			.allotment(AllotmentSeed.SNAPE_GRASS).patches(EnumSet.of(Patch.FALADOR))
+			.overrides(Collections.emptyMap()).build();
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.SNAPE_GRASS_SEED, 6);
+		bank.put(ItemID.RANARR_SEED, 1);
+		bank.put(ItemID.BUCKET_ULTRACOMPOST, 3);
+		HerbRun r = HerbRun.from(FarmPlan.compute(s, bank, new HashSet<>(), 99), s, 0);
+		HerbRun.Stop st = r.current();
+		HerbRun.Plot first = st.getPlots().get(1);
+		int[] v = {1, 2};
+		r.onSideState(null, v, new PatchStatus.Task[]{PatchStatus.Task.PLANT, PatchStatus.Task.PLANT});
+		// The allotment shows growing before the chat message: planted, not something else growing.
+		r.onSideState(null, v, new PatchStatus.Task[]{PatchStatus.Task.GROWING, PatchStatus.Task.PLANT});
+		assertTrue(first.isPlanted());
+		assertEquals(1, first.getVarbit());
+		assertEquals("Compost", HerbRun.status(first, true));
+		assertEquals(st, r.current());
+		r.onMessage("You plant 3 snape grass seeds in the allotment.", 1);
+		assertFalse(st.getPlots().get(2).isPlanted());
+	}
+
+	@Test
 	public void plotsWithoutSeedsDontHoldUpTheStop()
 	{
 		HerbRun r = run(false, FlowerSeed.LIMPWURT);

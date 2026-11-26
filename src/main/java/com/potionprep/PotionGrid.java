@@ -82,8 +82,13 @@ class PotionGrid extends JPanel
 	 * @param boostedLevel current Herblore level, 0 if unknown
 	 * @param pie          potions you can only make with a botanical pie
 	 */
-	void setStats(Map<Potion, Integer> makeable, Map<Potion, Double> xp, int boostedLevel, Set<Potion> pie)
+	/** Each potion's plan, worked out when its tile is hovered: the tooltip lists what you have for it. */
+	private java.util.function.Function<Potion, PotionPlan> planFor = p -> null;
+
+	void setStats(Map<Potion, Integer> makeable, Map<Potion, Double> xp, int boostedLevel, Set<Potion> pie,
+		java.util.function.Function<Potion, PotionPlan> planFor)
 	{
+		this.planFor = planFor;
 		for (Tile t : tiles.values())
 		{
 			int lvl = t.potion.getLevel();
@@ -184,6 +189,27 @@ class PotionGrid extends JPanel
 				+ (xp > 0 ? "<br>" + String.format(Locale.US, "%,d", (long) xp) + " xp" : "")
 				+ (pie ? "<br>with a botanical pie (+" + PotionPlan.PIE_BOOST + ")" : "");
 			setToolTipText("<html>" + potion.getName() + "<br>" + line + "</html>");
+		}
+
+		/** The usual tooltip, then each ingredient with how many you have (bank, potion storage and inventory). */
+		@Override
+		public String getToolTipText(MouseEvent e)
+		{
+			String base = super.getToolTipText(e);
+			PotionPlan plan = makeable < 0 ? null : planFor.apply(potion);
+			if (base == null || plan == null || plan.getRows().isEmpty())
+			{
+				return base;
+			}
+			StringBuilder sb = new StringBuilder(base.replace("</html>", "<br>"));
+			for (PotionPlan.Row row : plan.getRows())
+			{
+				String color = row.getHave() > 0 ? "#00C800" : "#808080";
+				sb.append("<br><font color='").append(color).append("'>")
+					.append(String.format(Locale.US, "%,d", row.getHave())).append(row.isDoses() ? " doses" : "")
+					.append("</font> ").append(row.getName());
+			}
+			return sb.append("</html>").toString();
 		}
 
 		void paintState()
