@@ -57,4 +57,20 @@ public class PatchStatusTest
 		assertEquals(null, PatchStatus.crop(194));
 		assertEquals(Farm.HerbSeed.SNAPDRAGON, PatchStatus.of(80, 0, null, null, 100).getCrop());
 	}
+
+	@Test
+	public void allotmentAndFlowerStates()
+	{
+		assertEquals(PatchStatus.Task.PICK, PatchStatus.sideTask(true, 11));
+		assertEquals(PatchStatus.Task.PLANT, PatchStatus.sideTask(true, 3));
+		assertEquals(PatchStatus.Task.RAKE, PatchStatus.sideTask(true, 0));
+		assertEquals(PatchStatus.Task.GROWING, PatchStatus.sideTask(true, 66));
+		assertEquals(PatchStatus.Task.CURE, PatchStatus.sideTask(true, 136));
+		assertEquals(PatchStatus.Task.CLEAR, PatchStatus.sideTask(true, 247));
+		assertEquals(PatchStatus.Task.PICK, PatchStatus.sideTask(false, 32));
+		assertEquals(PatchStatus.Task.CLEAR, PatchStatus.sideTask(false, 222));
+		assertEquals(net.runelite.api.gameval.ItemID.SNAPE_GRASS, PatchStatus.picks(HerbRun.PlotType.ALLOTMENT, 139));
+		assertEquals(net.runelite.api.gameval.ItemID.LIMPWURT_ROOT, PatchStatus.picks(HerbRun.PlotType.FLOWER, 32));
+		assertEquals(-1, PatchStatus.picks(HerbRun.PlotType.ALLOTMENT, 66));
+	}
 }

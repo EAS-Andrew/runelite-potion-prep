@@ -197,6 +197,35 @@ public class HerbRunTest
 	}
 
 	@Test
+	public void allotmentsShowTheirOwnLiveState()
+	{
+		FarmPlan.Settings s = FarmPlan.Settings.builder().herb(HerbSeed.RANARR).flower(FlowerSeed.NONE)
+			.allotment(AllotmentSeed.SNAPE_GRASS).patches(EnumSet.of(Patch.FALADOR))
+			.overrides(Collections.emptyMap()).build();
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.SNAPE_GRASS_SEED, 6);
+		bank.put(ItemID.RANARR_SEED, 1);
+		HerbRun r = HerbRun.from(FarmPlan.compute(s, bank, new HashSet<>(), 99), s, 0);
+		HerbRun.Stop st = r.current();
+		HerbRun.Plot first = st.getPlots().get(1);
+		HerbRun.Plot second = st.getPlots().get(2);
+		int[] v = {1, 2};
+		// Snape grass ready in one, the other raked.
+		r.onSideState(null, v, new PatchStatus.Task[]{PatchStatus.sideTask(true, 139), PatchStatus.sideTask(true, 3)});
+		assertEquals("Pick", HerbRun.status(first, false));
+		assertEquals("Plant", HerbRun.status(second, false));
+		// Picked and planted the second: it's tied to it and planted, the first still to pick.
+		r.onMessage("You plant 3 snape grass seeds in the allotment.", 2);
+		r.onSideState(null, v, new PatchStatus.Task[]{PatchStatus.Task.PICK, PatchStatus.Task.GROWING});
+		assertEquals("Pick", HerbRun.status(first, false));
+		assertEquals("Done", HerbRun.status(second, false));
+		// Something else already growing in the first: nothing to do there.
+		r.onSideState(null, v, new PatchStatus.Task[]{PatchStatus.Task.GROWING, PatchStatus.Task.GROWING});
+		assertEquals("Growing", HerbRun.status(first, false));
+		assertFalse(HerbRun.needsVisit(first, false));
+	}
+
+	@Test
 	public void plotsWithoutSeedsDontHoldUpTheStop()
 	{
 		HerbRun r = run(false, FlowerSeed.LIMPWURT);

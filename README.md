@@ -24,7 +24,7 @@ Click **Herb run** at the top of the panel. Pick your seeds, check the patches, 
   <img src="docs/herb-bank.png" alt="Bank laid out for a herb run" width="441">
 </p>
 
-Then click **Start run**. The panel lists each stop with its teleport, and the teleport is highlighted wherever you use it. Once you're there, a path on the ground and minimap leads to the patch, and each plot ticks off as you pick, plant and compost. The run moves on by itself and stops after the last patch.
+Then click **Start run**. The panel lists each stop with its teleport, and the teleport is highlighted wherever you use it. Once you're there, a path on the minimap leads to the patch and clears once you're beside it, and each plot ticks off as you pick, plant and compost. The run moves on by itself and stops after the last patch.
 
 With RuneLite's **Time Tracking** plugin on, each patch shows what's growing there and its state ("Ranarr ready", "Snap 40m", "Diseased irit", Dead or Empty), and patches still growing are left out.
 
@@ -90,13 +90,14 @@ Each patch picks the best teleport you can use: unlimited items first, then hous
 - Until the first patch, the panel warns in red about anything the run needs that you're not carrying or wearing, and closing the bank without it says so in chat.
 - The teleport is highlighted in the inventory, equipment or Magic tab, then the item or spell, then the option to pick in its menu (jewellery, Xeric's talisman, spirit tree, portal nexus, quetzal whistle).
 - The farming icon marks the patch on the minimap and world map. When you arrive, every patch there with something left to do is outlined, in any order you like. Each allotment is outlined on its own and drops out once it's planted and composted.
-- Each plot shows Pick, Clear, Cure, Rake, Plant + compost, Plant, Compost or Done. Compost and seed can go on in either order, and compost at the leprechaun counts. A dead patch says "Clear or resurrect" when you can cast Resurrect Crops.
+- Over each outlined patch float the icons of what to use on it next (spade, rake, plant cure, compost, seed), and the same items are outlined in your inventory. A patch ready to pick shows what you'll get from it: the grimy herb, snape grass, limpwurt root and so on. Out of compost with some left at the tool leprechaun, the leprechaun is outlined with the compost to take; with none there either, the run carries on without it.
+- Each plot shows Pick, Clear, Cure, Rake, Plant + compost, Plant, Compost or Done, read live from the patch, flower patches and allotments included. An allotment or flower patch with something else still growing says Growing and is skipped. Compost and seed can go on in either order, and compost at the leprechaun counts. A dead patch says "Clear or resurrect" when you can cast Resurrect Crops.
 - Out of compost or seeds, the run carries on without them. Once your herb seeds are used up, it only visits patches with something to pick or cure.
 - At the end it says how many herbs you picked. Logging out keeps the run for that account.
 
 ### Harvest estimate
 
-What you'll pick this run from the herbs ready in your patches (as Time Tracking last saw them), what it adds to your potions, and what this run's plantings should give next time. Herbs use the OSRS Wiki's formula with your Farming level, compost, magic secateurs, Farming cape, Kandarin and Kourend diaries, attas and disease risk (none at Troll Stronghold, Weiss, Harmony, Hosidius with the Kourend easy diary, or Civitas illa Fortis with 16,000 Colosseum glory). Snape grass uses its own chance to save, and limpwurt is 3 roots plus a bonus that grows with Farming level. Allotments and flowers assume the crop survives. It's an average, not a promise.
+What you'll pick this run from the herbs, snape grass and limpwurt ready in your patches (as Time Tracking last saw them), what it adds to your potions, and what this run's plantings should give next time. Herbs use the OSRS Wiki's formula with your Farming level, compost, magic secateurs, Farming cape, Kandarin and Kourend diaries, attas and disease risk (none at Troll Stronghold, Weiss, Harmony, Hosidius with the Kourend easy diary, or Civitas illa Fortis with 16,000 Colosseum glory). Snape grass uses its own chance to save, and limpwurt is 3 roots plus a bonus that grows with Farming level. Allotments and flowers assume the crop survives. It's an average, not a promise.
 
 ### Panel sections
 

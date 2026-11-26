@@ -38,7 +38,7 @@ public class HerbRun
 		private final String seed;
 		private boolean planted;
 		private boolean composted;
-		/** For the herb plot: what the patch needs right now (read live at the patch), or null. */
+		/** What the patch needs right now (read live at the patch), or null. */
 		private PatchStatus.Task task;
 		/** Not enough seeds with you to plant it: it doesn't hold up the stop. */
 		private boolean noSeeds;
@@ -46,6 +46,8 @@ public class HerbRun
 		private boolean harvestOnly;
 		/** For an allotment, the farming varbit of the one it turned out to be, once you've used it; -1 until then. */
 		private int varbit = -1;
+		/** For an allotment not used yet, the one whose state it's showing; -1 if none. */
+		private int shown = -1;
 
 		/** Seeds one planting uses. */
 		int seedsPer()
@@ -103,7 +105,7 @@ public class HerbRun
 		{
 			for (Plot p : plots)
 			{
-				if (p.noSeeds && !p.planted)
+				if (p.noSeeds && !p.planted || alreadyGrowing(p))
 				{
 					continue;
 				}
@@ -494,6 +496,80 @@ public class HerbRun
 	}
 
 	/**
+	 * The flower patch's and allotments' live states at the current stop. An
+	 * allotment you've used keeps its own; the others take the free ones, those
+	 * with something to do first. Going from empty to growing is a planting.
+	 *
+	 * @param flower the flower patch's task, or null if there's none here
+	 * @param allotVarbits the allotments' varbits, with their tasks in {@code allot}
+	 * @return true if anything changed
+	 */
+	boolean onSideState(PatchStatus.Task flower, int[] allotVarbits, PatchStatus.Task[] allot)
+	{
+		Stop stop = current();
+		if (stop == null)
+		{
+			return false;
+		}
+		boolean changed = false;
+		List<Integer> free = new ArrayList<>();
+		for (int i = 0; i < allotVarbits.length; i++)
+		{
+			int v = allotVarbits[i];
+			if (stop.plots.stream().noneMatch(p -> p.type == PlotType.ALLOTMENT && p.varbit == v))
+			{
+				free.add(i);
+			}
+		}
+		free.sort(java.util.Comparator.comparing(i -> allot[i] == PatchStatus.Task.GROWING));
+		int next = 0;
+		// Plots still to plant get the free allotments first.
+		List<Plot> plots = new ArrayList<>(stop.plots);
+		plots.sort(java.util.Comparator.comparing(p -> p.planted));
+		for (Plot p : plots)
+		{
+			if (p.type == PlotType.FLOWER && flower != null)
+			{
+				changed |= setTask(p, flower, true);
+			}
+			else if (p.type == PlotType.ALLOTMENT)
+			{
+				int idx = -1;
+				for (int i = 0; i < allotVarbits.length; i++)
+				{
+					idx = allotVarbits[i] == p.varbit ? i : idx;
+				}
+				if (idx == -1 && next < free.size())
+				{
+					idx = free.get(next++);
+				}
+				if (idx != -1)
+				{
+					p.shown = allotVarbits[idx];
+					changed |= setTask(p, allot[idx], p.varbit != -1);
+				}
+			}
+		}
+		if (changed && stop.done(compost))
+		{
+			index++;
+		}
+		return changed;
+	}
+
+	/** Sets a plot's live task; empty to growing on a plot that's surely this one means it was planted. */
+	private static boolean setTask(Plot p, PatchStatus.Task task, boolean surely)
+	{
+		boolean changed = p.task != task;
+		if (surely && task == PatchStatus.Task.GROWING && p.task == PatchStatus.Task.PLANT && !p.planted)
+		{
+			p.planted = true;
+		}
+		p.task = task;
+		return changed;
+	}
+
+	/**
 	 * Marks a plot of this type as having had that step: the allotment it was
 	 * done to when known, else the first still missing it.
 	 */
@@ -503,9 +579,10 @@ public class HerbRun
 		{
 			// The allotment used before (or the first not yet tied to one) is this one.
 			Plot to = stop.plots.stream().filter(p -> p.type == type && p.varbit == varbit).findFirst()
+				.orElseGet(() -> stop.plots.stream().filter(p -> p.type == type && p.varbit == -1 && p.shown == varbit).findFirst()
 				.orElseGet(() -> stop.plots.stream().filter(p -> p.type == type && p.varbit == -1
 					&& (planted ? !p.planted : !p.composted)).findFirst()
-				.orElseGet(() -> stop.plots.stream().filter(p -> p.type == type && p.varbit == -1).findFirst().orElse(null)));
+				.orElseGet(() -> stop.plots.stream().filter(p -> p.type == type && p.varbit == -1).findFirst().orElse(null))));
 			if (to != null)
 			{
 				to.varbit = varbit;
@@ -554,9 +631,19 @@ public class HerbRun
 		}
 	}
 
+	/** Something else is growing in this flower patch or allotment: nothing to do there this run. */
+	static boolean alreadyGrowing(Plot p)
+	{
+		return p.type != PlotType.HERB && !p.planted && p.task == PatchStatus.Task.GROWING;
+	}
+
 	/** A word or two for a plot: Pick, Clear, Cure, Rake, then what's left of planting and composting, or Done. */
 	static String status(Plot p, boolean compost)
 	{
+		if (alreadyGrowing(p))
+		{
+			return "Growing";
+		}
 		if (p.noSeeds && !p.planted)
 		{
 			if (p.task == PatchStatus.Task.CURE)
@@ -595,7 +682,7 @@ public class HerbRun
 	static boolean needsVisit(Plot p, boolean compost)
 	{
 		String st = status(p, compost);
-		return !st.equals("Done") && !st.equals("No seeds");
+		return !st.equals("Done") && !st.equals("No seeds") && !st.equals("Growing");
 	}
 
 	/** What's left at a plot, e.g. "pick, compost, plant ranarr seed". */

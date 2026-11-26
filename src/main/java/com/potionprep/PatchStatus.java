@@ -4,6 +4,7 @@ import com.potionprep.Farm.Patch;
 import java.util.EnumMap;
 import java.util.Map;
 import lombok.Value;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.config.ConfigManager;
 
@@ -185,6 +186,73 @@ public class PatchStatus
 				return value == 3 ? Task.PLANT : Task.RAKE;
 			default:
 				return Task.PLANT;
+		}
+	}
+
+	/**
+	 * What an allotment's or flower patch's varbit value means (Time Tracking's PatchImplementation):
+	 * R rake, P empty and raked, G growing, K pick, C cure, X clear. Unused values read as weeds.
+	 */
+	private static final String ALLOTMENT_TASKS = ""
+		+ "RRRPRRGGGGKKKGGGGKKKGGGGKKKGGGGKKKGGGGGGKKKGGGGGGKKKGGGGGGGGKKKG"
+		+ "GGGGGGGGGGRRRGGGGRRRGGGGRRRGGGGRRRGGGGGGRRRGGGGGGRRRGGGGGGGGRRRR"
+		+ "GGGGGGGCCCKKKRCCCRRRRCCCRRRRCCCRRRRCCCCCRRRRCCCCCRRRRCCCCCCCRRRR"
+		+ "RXXXCCCXXXCCCRXXXXXXRXXXRRRRXXXRRRRXXXXXRRRRXXXXXRRRRXXXXXXXRRRR";
+	private static final String FLOWER_TASKS = ""
+		+ "RRRPRRRRGGGGKGGGGKGGGGKGGGGKGGGGKGGGGGGGGKRRRRRRRRRRRRRRRRRRRRRR"
+		+ "RRRRRRRRGGGGRGGGGRGGGGRGGGGRGGGGRRRRRGGGGRRRRRRRRRRRRRRRRRRRRRRR"
+		+ "RRRRRRRRRCCCRRCCCRRCCCRRCCCRRCCCRRRRRRCCCRRRRRRRRRRRRRRRRRRRRRRR"
+		+ "RRRRRRRRRXXXXRXXXXRXXXXRXXXXRXXXXRRRRRXXXXRRRRRRRRRRRRRRRRRRRRRR";
+
+	/** What a ready patch gives when picked, from its live varbit value; -1 if it isn't ready or it's unknown. */
+	static int picks(HerbRun.PlotType type, int value)
+	{
+		if (type == HerbRun.PlotType.HERB)
+		{
+			Farm.HerbSeed herb = task(value) == Task.PICK ? crop(value) : null;
+			return herb != null ? herb.getGrimyId() : -1;
+		}
+		boolean allotment = type == HerbRun.PlotType.ALLOTMENT;
+		if (sideTask(allotment, value) != Task.PICK)
+		{
+			return -1;
+		}
+		int[][] ready = allotment
+			? new int[][]{{10, 12, ItemID.POTATO}, {17, 19, ItemID.ONION}, {24, 26, ItemID.CABBAGE}, {31, 33, ItemID.TOMATO},
+				{40, 42, ItemID.SWEETCORN}, {49, 51, ItemID.STRAWBERRY}, {60, 62, ItemID.WATERMELON}, {138, 140, ItemID.SNAPE_GRASS}}
+			: new int[][]{{12, 12, ItemID.MARIGOLD}, {17, 17, ItemID.ROSEMARY}, {22, 22, ItemID.NASTURTIUM}, {27, 27, ItemID.WOADLEAF},
+				{32, 32, ItemID.LIMPWURT_ROOT}, {41, 41, ItemID.WHITELILLY}};
+		for (int[] r : ready)
+		{
+			if (value >= r[0] && value <= r[1])
+			{
+				return r[2];
+			}
+		}
+		return -1;
+	}
+
+	/** What to do at an allotment or flower patch right now, from its live varbit value. */
+	static Task sideTask(boolean allotment, int value)
+	{
+		if (value < 0 || value > 255)
+		{
+			return Task.RAKE;
+		}
+		switch ((allotment ? ALLOTMENT_TASKS : FLOWER_TASKS).charAt(value))
+		{
+			case 'P':
+				return Task.PLANT;
+			case 'G':
+				return Task.GROWING;
+			case 'K':
+				return Task.PICK;
+			case 'C':
+				return Task.CURE;
+			case 'X':
+				return Task.CLEAR;
+			default:
+				return Task.RAKE;
 		}
 	}
 

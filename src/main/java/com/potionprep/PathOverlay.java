@@ -52,8 +52,108 @@ class PathOverlay extends Overlay
 	/** @param key the patch each object belongs to (its farming varbit), so neighbouring allotments stay apart */
 	void setOutline(List<net.runelite.api.GameObject> objects, java.util.function.ToIntFunction<net.runelite.api.GameObject> key)
 	{
+		setOutline(objects, key, Collections.emptyMap());
+	}
+
+	/** Icons over each patch, by its key: what to use on it next, like Quest Helper's markers. */
+	private volatile java.util.Map<Integer, List<java.awt.image.BufferedImage>> icons = Collections.emptyMap();
+
+	void setOutline(List<net.runelite.api.GameObject> objects, java.util.function.ToIntFunction<net.runelite.api.GameObject> key,
+		java.util.Map<Integer, List<java.awt.image.BufferedImage>> icons)
+	{
 		this.key = key;
+		this.icons = icons;
 		this.outline = objects;
+	}
+
+	/** Someone to talk to (the tool leprechaun, for compost), outlined with an icon over their head; null for none. */
+	private volatile net.runelite.api.NPC npc;
+	private volatile java.awt.image.BufferedImage npcIcon;
+
+	void setNpc(net.runelite.api.NPC npc, java.awt.image.BufferedImage icon)
+	{
+		this.npcIcon = icon;
+		this.npc = npc;
+	}
+
+	private void drawNpc(Graphics2D g)
+	{
+		net.runelite.api.NPC n = npc;
+		java.awt.image.BufferedImage icon = npcIcon;
+		if (n == null)
+		{
+			return;
+		}
+		java.awt.Shape hull = n.getConvexHull();
+		if (hull != null)
+		{
+			g.setStroke(new BasicStroke(2));
+			g.setColor(new Color(0, 200, 255, 40));
+			g.fill(hull);
+			g.setColor(LINE);
+			g.draw(hull);
+		}
+		Point p = icon == null ? null : n.getCanvasImageLocation(icon, n.getLogicalHeight() + 40);
+		if (p != null)
+		{
+			g.drawImage(icon, p.getX(), p.getY(), null);
+		}
+	}
+
+	/** How high over the ground the icons float, in local units. */
+	private static final int ICON_HEIGHT = 120;
+
+	/** Draws a patch's icons side by side, over the middle of it (or the piece nearest the middle). */
+	private void drawIcons(Graphics2D g, List<java.awt.image.BufferedImage> images, java.awt.geom.Area area,
+		List<net.runelite.api.GameObject> group)
+	{
+		WorldView wv = client.getTopLevelWorldView();
+		if (wv == null || images.isEmpty())
+		{
+			return;
+		}
+		LocalPoint at = null;
+		if (area != null && !area.isEmpty())
+		{
+			java.awt.geom.Rectangle2D b = area.getBounds2D();
+			LocalPoint mid = new LocalPoint((int) b.getCenterX(), (int) b.getCenterY(), wv);
+			at = mid;
+			if (!area.contains(b.getCenterX(), b.getCenterY()))
+			{
+				// An L's middle is outside it: use the piece closest to it.
+				int best = Integer.MAX_VALUE;
+				for (net.runelite.api.GameObject o : group)
+				{
+					LocalPoint lp = o.getLocalLocation();
+					int d = lp == null ? Integer.MAX_VALUE : lp.distanceTo(mid);
+					if (d < best)
+					{
+						best = d;
+						at = lp;
+					}
+				}
+			}
+		}
+		else if (!group.isEmpty())
+		{
+			at = group.get(0).getLocalLocation();
+		}
+		Point p = at == null ? null : Perspective.localToCanvas(client, at, group.get(0).getPlane(), ICON_HEIGHT);
+		if (p == null)
+		{
+			return;
+		}
+		int width = 0;
+		for (java.awt.image.BufferedImage im : images)
+		{
+			width += im.getWidth();
+		}
+		int x = p.getX() - width / 2;
+		for (java.awt.image.BufferedImage im : images)
+		{
+			g.drawImage(im, x, p.getY() - im.getHeight() / 2, null);
+			x += im.getWidth();
+		}
 	}
 
 	/**
@@ -297,6 +397,15 @@ class PathOverlay extends Overlay
 				g.setColor(LINE);
 				g.draw(hull);
 			}
+			List<java.awt.image.BufferedImage> marks = group.isEmpty() ? null : icons.get(key.applyAsInt(group.get(0)));
+			if (marks != null)
+			{
+				drawIcons(g, marks, traced ? area : null, group);
+			}
+		}
+		if (!minimap)
+		{
+			drawNpc(g);
 		}
 		List<int[]> path = tiles;
 		if (path.size() < 2)

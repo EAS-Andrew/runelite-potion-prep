@@ -27,7 +27,7 @@ class NavOverlay extends Overlay
 
 	/** The game's own farming patch map icon and yellow guide arrow, so it looks native. */
 	static final int FARMING_ICON = 1501; // SpriteID.MAP_ICON_FARMING_PATCH
-	private static final int GUIDE_ARROW = 441; // SpriteID.MINIMAP_GUIDE_ARROW_YELLOW (points down)
+	private static final int GUIDE_ARROW = 441; // SpriteID.MINIMAP_GUIDE_ARROW_YELLOW (points down), drawn blue
 
 	private final Client client;
 	private final net.runelite.client.game.SpriteManager sprites;
@@ -114,7 +114,7 @@ class NavOverlay extends Overlay
 		}
 	}
 
-	/** The game's yellow guide arrow, turned to point along {@code angle}. */
+	/** The game's guide arrow, recoloured blue like the run's other highlights, turned to point along {@code angle}. */
 	private BufferedImage gameArrow(double angle)
 	{
 		if (arrows == null)
@@ -124,6 +124,7 @@ class NavOverlay extends Overlay
 			{
 				return null;
 			}
+			base = blue(base);
 			arrows = new BufferedImage[64];
 			int size = Math.max(base.getWidth(), base.getHeight()) + 4;
 			for (int i = 0; i < arrows.length; i++)
@@ -140,6 +141,30 @@ class NavOverlay extends Overlay
 			}
 		}
 		return arrows[Math.floorMod((int) Math.round(angle * arrows.length / (2 * Math.PI)), arrows.length)];
+	}
+
+	/** The run's blue, matching the path and patch outlines. */
+	private static final Color BLUE = new Color(0, 200, 255);
+
+	/** A copy of a sprite in blue: each pixel's brightness kept (so the shading and dark edge stay), its colour the run's blue. */
+	static BufferedImage blue(BufferedImage src)
+	{
+		BufferedImage out = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_ARGB);
+		for (int y = 0; y < src.getHeight(); y++)
+		{
+			for (int x = 0; x < src.getWidth(); x++)
+			{
+				int argb = src.getRGB(x, y);
+				int r = argb >> 16 & 0xFF;
+				int gr = argb >> 8 & 0xFF;
+				int b = argb & 0xFF;
+				// The yellow's brightest channel is its brightness.
+				float v = Math.max(r, Math.max(gr, b)) / 255f;
+				out.setRGB(x, y, argb & 0xFF000000 | Math.round(BLUE.getRed() * v) << 16
+					| Math.round(BLUE.getGreen() * v) << 8 | Math.round(BLUE.getBlue() * v));
+			}
+		}
+		return out;
 	}
 
 	private static BufferedImage arrow(double angle)

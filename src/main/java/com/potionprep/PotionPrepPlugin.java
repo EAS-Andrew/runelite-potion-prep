@@ -605,6 +605,7 @@ public class PotionPrepPlugin extends Plugin
 		menuOption = null;
 		showPath(null);
 		scenePath.setOutline(Collections.emptyList());
+		scenePath.setNpc(null, null);
 		navOverlay.set(null);
 		mark(null, null);
 	}
@@ -671,6 +672,26 @@ public class PotionPrepPlugin extends Plugin
 			}
 		}
 
+		if (atStop && stop.getPlots().stream().anyMatch(p -> p.getType() != HerbRun.PlotType.HERB))
+		{
+			// The flower patch and each allotment, read live like the herb patch.
+			int[] side = PatchStatus.sideVarbits(stop.getPatch());
+			if (side.length > 0)
+			{
+				int[] allotVarbits = java.util.Arrays.copyOfRange(side, 1, side.length);
+				PatchStatus.Task[] allot = new PatchStatus.Task[allotVarbits.length];
+				for (int i = 0; i < allot.length; i++)
+				{
+					allot[i] = PatchStatus.sideTask(true, client.getVarbitValue(allotVarbits[i]));
+				}
+				if (run.onSideState(PatchStatus.sideTask(false, client.getVarbitValue(side[0])), allotVarbits, allot))
+				{
+					stop = run.current();
+					atStop = stop != null && PatchPlaces.near(stop.getPoint(), me.getWorldLocation());
+				}
+			}
+		}
+
 		// A jump to near the stop (outside your house, where the portal's still to come) is the
 		// teleport done: from there it's a walk, so the teleport needn't be pointed at.
 		net.runelite.api.coords.WorldPoint here = me != null ? me.getWorldLocation() : null;
@@ -729,18 +750,17 @@ public class PotionPrepPlugin extends Plugin
 				highlight.add(cloak);
 			}
 		}
-		else if (stop != null)
+		else if (stop != null && atStop)
 		{
-			PatchStatus.Task task = stop.hasHerb() ? stop.getPlots().get(0).getTask() : null;
-			if (task == PatchStatus.Task.CLEAR)
+			// What to use on the patches still to do: spade, rake, plant cure, compost and seeds.
+			// Not what a ready patch gives: that's what you'll get, not something to use.
+			for (HerbRun.Plot p : stop.getPlots())
 			{
-				highlight.add(ItemID.SPADE);
+				if (!HerbRun.status(p, run.isCompost()).equals("Pick"))
+				{
+					highlight.addAll(itemsFor(stop, p));
+				}
 			}
-			else if (task == PatchStatus.Task.RAKE)
-			{
-				highlight.add(ItemID.RAKE);
-			}
-			// Seeds and compost aren't highlighted: you know where they are.
 		}
 		runItemOverlay.set(highlight);
 		// On the way, point at the spell to cast and colour the option to pick in teleport menus.
@@ -771,14 +791,206 @@ public class PotionPrepPlugin extends Plugin
 
 		// Once the patch is in the loaded area, draw the walk there on the ground and minimap;
 		// a minimap pin/arrow and a world map marker always point to it.
-		showPath(stop);
 		net.runelite.api.coords.WorldPoint goal = ring != null ? ring.getWorldLocation() : stop != null ? stop.getPoint() : null;
 		navOverlay.set(goal);
 		mark(goal, stop == null ? null : ring != null ? "Fairy ring" : stop.getName());
 		// At the stop, outline the herb patch itself (no hint arrow: that's the game's).
 		// At the stop, outline every patch with something still to do, in whatever order you like.
-		scenePath.setOutline(atStop ? toDo(stop) : ring != null ? Collections.singletonList(ring) : Collections.emptyList(),
-			o -> patchVarbits.getOrDefault(o, -o.getId()));
+		// Over each, the icons of what to use on it next.
+		List<net.runelite.api.GameObject> outlined = atStop ? toDo(stop) : ring != null ? Collections.singletonList(ring) : Collections.emptyList();
+		// The path only gets you there: once you're by a patch to do, its outline takes over.
+		boolean arrived = atStop && here != null && outlined.stream()
+			.anyMatch(o -> o.getPlane() == here.getPlane() && o.getWorldLocation().distanceTo2D(here) <= PATH_DONE);
+		showPath(arrived ? null : stop);
+		java.util.function.ToIntFunction<net.runelite.api.GameObject> key = o -> patchVarbits.getOrDefault(o, -o.getId());
+		Map<Integer, List<java.awt.image.BufferedImage>> icons = new HashMap<>();
+		if (atStop)
+		{
+			for (net.runelite.api.GameObject o : outlined)
+			{
+				HerbRun.Plot plot = plotAt(stop, o);
+				if (plot != null)
+				{
+					List<java.awt.image.BufferedImage> images = new ArrayList<>();
+					for (int id : itemsFor(stop, plot))
+					{
+						images.add(itemManager.getImage(id));
+					}
+					icons.put(key.applyAsInt(o), images);
+				}
+			}
+		}
+		scenePath.setOutline(outlined, key, icons);
+		// No compost on you but the leprechaun has some: point at them, with the compost to take.
+		net.runelite.api.NPC leprechaun = atStop ? leprechaunFor(stop, here) : null;
+		scenePath.setNpc(leprechaun, leprechaun != null ? itemManager.getImage(storedCompost()) : null);
+	}
+
+	/** The run's plot an outlined patch object is, or null. */
+	private HerbRun.Plot plotAt(HerbRun.Stop stop, net.runelite.api.GameObject o)
+	{
+		HerbRun.PlotType type = typeAt(o, stop.getPatch());
+		if (type == null)
+		{
+			return null;
+		}
+		Integer v = patchVarbits.get(o);
+		HerbRun.Plot any = null;
+		for (HerbRun.Plot p : stop.getPlots())
+		{
+			if (p.getType() != type)
+			{
+				continue;
+			}
+			if (type != HerbRun.PlotType.ALLOTMENT || v != null && (p.getVarbit() == v || p.getVarbit() == -1 && p.getShown() == v))
+			{
+				return p;
+			}
+			any = any == null && p.getVarbit() == -1 ? p : any;
+		}
+		return any;
+	}
+
+	/** The live varbit of a plot at the stop you're at: the herb patch, flower patch or its allotment; -1 if unknown. */
+	private int varbitOf(HerbRun.Stop stop, HerbRun.Plot p)
+	{
+		if (p.getType() == HerbRun.PlotType.HERB)
+		{
+			return PatchStatus.varbit(stop.getPatch());
+		}
+		int[] side = PatchStatus.sideVarbits(stop.getPatch());
+		if (p.getType() == HerbRun.PlotType.FLOWER)
+		{
+			return side.length > 0 ? side[0] : -1;
+		}
+		return p.getVarbit() != -1 ? p.getVarbit() : p.getShown();
+	}
+
+	/**
+	 * What to use on a plot next, in order: a spade, rake or plant cure, else compost then seed.
+	 * Ready to pick, it's what you'll pick (the grimy herb, snape grass, limpwurt root).
+	 */
+	private List<Integer> itemsFor(HerbRun.Stop stop, HerbRun.Plot p)
+	{
+		List<Integer> out = new ArrayList<>();
+		switch (HerbRun.status(p, run.isCompost()))
+		{
+			case "Pick":
+			{
+				int v = varbitOf(stop, p);
+				out.add(v == -1 ? -1 : PatchStatus.picks(p.getType(), client.getVarbitValue(v)));
+				break;
+			}
+			case "Clear":
+				out.add(ItemID.SPADE);
+				break;
+			case "Rake":
+				out.add(ItemID.RAKE);
+				break;
+			case "Cure":
+				out.add(ItemID.PLANT_CURE);
+				break;
+			case "Plant + compost":
+				addCompost(out);
+				out.add(run.seedId(p.getType()));
+				break;
+			case "Plant":
+				out.add(run.seedId(p.getType()));
+				break;
+			case "Compost":
+				addCompost(out);
+				break;
+			default:
+				break;
+		}
+		out.removeIf(id -> id == -1);
+		return out;
+	}
+
+	/** The compost to use: what you carry (the best first, or the bottomless bucket), else the leprechaun's; none for Fertile Soil. */
+	private void addCompost(List<Integer> out)
+	{
+		if (run.isFertileSoil() && client.getVarbitValue(VarbitID.SPELLBOOK) == Farm.LUNAR)
+		{
+			return;
+		}
+		for (int id : Farm.COMPOST)
+		{
+			if (invCounts.getOrDefault(id, 0) > 0)
+			{
+				out.add(id);
+				return;
+			}
+		}
+		if (invCounts.getOrDefault(Farm.BOTTOMLESS_BUCKET, 0) > 0)
+		{
+			out.add(Farm.BOTTOMLESS_BUCKET);
+			return;
+		}
+		// None on you: what the tool leprechaun has, to take out. With none there either, the run doesn't ask for it.
+		int stored = storedCompost();
+		if (stored != -1)
+		{
+			out.add(stored);
+		}
+	}
+
+	/** The best compost the tool leprechaun has (or the bottomless bucket), -1 if none. */
+	private int storedCompost()
+	{
+		Map<Integer, Integer> stored = ToolLeprechaun.read(client::getVarbitValue);
+		for (int id : Farm.COMPOST)
+		{
+			if (stored.getOrDefault(id, 0) > 0)
+			{
+				return id;
+			}
+		}
+		return stored.getOrDefault(Farm.BOTTOMLESS_BUCKET, 0) > 0 ? Farm.BOTTOMLESS_BUCKET : -1;
+	}
+
+	/** Compost (or the bottomless bucket) in your inventory. */
+	private boolean carryingCompost()
+	{
+		if (invCounts.getOrDefault(Farm.BOTTOMLESS_BUCKET, 0) > 0)
+		{
+			return true;
+		}
+		for (int id : Farm.COMPOST)
+		{
+			if (invCounts.getOrDefault(id, 0) > 0)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * The tool leprechaun to take compost from, when a patch here still needs it and
+	 * you've none on you; null otherwise or if they're not in sight.
+	 */
+	private net.runelite.api.NPC leprechaunFor(HerbRun.Stop stop, net.runelite.api.coords.WorldPoint here)
+	{
+		if (stop == null || here == null || carryingCompost() || storedCompost() == -1
+			|| run.isFertileSoil() && client.getVarbitValue(VarbitID.SPELLBOOK) == Farm.LUNAR
+			|| stop.getPlots().stream().map(p -> HerbRun.status(p, run.isCompost())).noneMatch(st -> st.endsWith("ompost")))
+		{
+			return null;
+		}
+		net.runelite.api.WorldView wv = client.getTopLevelWorldView();
+		net.runelite.api.NPC best = null;
+		int bestDist = 21;
+		for (net.runelite.api.NPC npc : wv == null ? Collections.<net.runelite.api.NPC>emptyList() : wv.npcs())
+		{
+			int d = npc.getWorldLocation().distanceTo2D(here);
+			if ("Tool Leprechaun".equalsIgnoreCase(npc.getName()) && d < bestDist)
+			{
+				best = npc;
+				bestDist = d;
+			}
+		}
+		return best;
 	}
 
 	/** Compost to hand: carried, or stored with the tool leprechaun (one at every patch). */
@@ -811,6 +1023,9 @@ public class PotionPrepPlugin extends Plugin
 	 * Walk from the player to the stop, drawn on the ground and minimap. Ends
 	 * beside the herb patch object when it's loaded, else near the stop's spot.
 	 */
+	/** Within this many tiles of a patch to do, the path is put away. */
+	private static final int PATH_DONE = 8;
+
 	private void showPath(HerbRun.Stop stop)
 	{
 		List<int[]> tiles = Collections.emptyList();
@@ -853,7 +1068,7 @@ public class PotionPrepPlugin extends Plugin
 			pathKey = null;
 		}
 		walk = tiles;
-		scenePath.set(tiles);
+		// On the minimap only: in the scene, the outlines and markers show the way.
 		minimapPath.set(tiles);
 	}
 
@@ -1218,8 +1433,8 @@ public class PotionPrepPlugin extends Plugin
 			{
 				HerbRun.Plot mine = stop.getPlots().stream().filter(p -> p.getVarbit() == v).findFirst().orElse(null);
 				if (mine != null ? !HerbRun.needsVisit(mine, run.isCompost())
-					// Not used yet: one of the plots still to do, if it's empty or every free allotment is on the run.
-					: !untiedLeft || untied < freeAllotments && client.getVarbitValue(v) > 3)
+					// Not used yet: one of the plots still to do, unless something else grows there and another is free.
+					: !untiedLeft || untied < freeAllotments && PatchStatus.sideTask(true, client.getVarbitValue(v)) == PatchStatus.Task.GROWING)
 				{
 					continue;
 				}
@@ -2435,7 +2650,6 @@ public class PotionPrepPlugin extends Plugin
 			patchVarbits.clear();
 			pathKey = null;
 			walk = Collections.emptyList();
-			scenePath.set(walk);
 			minimapPath.set(walk);
 		}
 		if (event.getGameState() == GameState.LOGIN_SCREEN || event.getGameState() == GameState.HOPPING)
@@ -2628,7 +2842,9 @@ public class PotionPrepPlugin extends Plugin
 		int herbs = (int) Math.round(fp.getExpectedHerbs());
 		int snape = (int) Math.round(fp.getExpectedSnape());
 		int roots = (int) Math.round(fp.getExpectedLimpwurt());
-		if (herbs <= 0 && snape <= 0 && roots <= 0 && fp.getPicking().isEmpty())
+		int snapeNow = (int) Math.round(fp.getPickingSnape());
+		int rootsNow = (int) Math.round(fp.getPickingLimpwurt());
+		if (herbs <= 0 && snape <= 0 && roots <= 0 && fp.getPicking().isEmpty() && snapeNow <= 0 && rootsNow <= 0)
 		{
 			return null;
 		}
@@ -2654,7 +2870,7 @@ public class PotionPrepPlugin extends Plugin
 		String next = null;
 		Map<Farm.HerbSeed, Double> picking = fp.getPicking();
 		int picked = (int) Math.round(picking.values().stream().mapToDouble(Double::doubleValue).sum());
-		if (picked > 0)
+		if (picked > 0 || snapeNow > 0 || rootsNow > 0)
 		{
 			List<String> herbsNow = new ArrayList<>();
 			picking.entrySet().stream().sorted((a, b) -> Double.compare(b.getValue(), a.getValue())).forEach(e ->
@@ -2667,8 +2883,29 @@ public class PotionPrepPlugin extends Plugin
 					grown.add(e.getKey().getGrimyId());
 				}
 			});
-			head = herbsNow.size() == 1 ? "Picking ~" + picked + " grimy " + herbsNow.get(0).replaceFirst("^\\d+ ", "")
-				: "Picking ~" + picked + " grimy: " + String.join(", ", herbsNow);
+			// Snape grass and limpwurt ready in the allotments and flower patches come too.
+			List<String> others = new ArrayList<>();
+			if (snapeNow > 0)
+			{
+				others.add(snapeNow + " snape grass");
+				after.merge(ItemID.SNAPE_GRASS, snapeNow, Integer::sum);
+				grown.add(ItemID.SNAPE_GRASS);
+			}
+			if (rootsNow > 0)
+			{
+				others.add(rootsNow + " limpwurt roots");
+				after.merge(ItemID.LIMPWURT_ROOT, rootsNow, Integer::sum);
+				grown.add(ItemID.LIMPWURT_ROOT);
+			}
+			String herbPart = picked <= 0 ? null : herbsNow.size() == 1 ? picked + " grimy " + herbsNow.get(0).replaceFirst("^\\d+ ", "")
+				: picked + " grimy: " + String.join(", ", herbsNow);
+			List<String> all = new ArrayList<>();
+			if (herbPart != null)
+			{
+				all.add(herbPart);
+			}
+			all.addAll(others);
+			head = "Picking ~" + String.join(herbsNow.size() > 1 ? "; " : ", ", all);
 			next = parts.isEmpty() ? "Nothing planted for next time" : "Next run ~" + String.join(", ", parts);
 		}
 		else

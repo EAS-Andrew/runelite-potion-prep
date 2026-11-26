@@ -214,6 +214,9 @@ public final class FarmPlan
 	/** Compost comes from casting Fertile Soil, not items. */
 	private boolean fertileSoil;
 	private double expectedLimpwurt;
+	/** Snape grass and limpwurt roots expected from what's ready in the run's allotments and flower patches now. */
+	private double pickingSnape;
+	private double pickingLimpwurt;
 
 	/** How many of each item to withdraw (seeds, compost, runes, tablets), for the bank overlay. */
 	private final Map<Integer, Integer> withdraw;
@@ -600,6 +603,27 @@ public final class FarmPlan
 				int seedsHave = counts.getOrDefault(s.getFlower().getSeedId(), 0) + vault.getOrDefault(s.getFlower().getSeedId(), 0);
 				int n = Math.min(flowerPatches, seedsHave);
 				plan.expectedLimpwurt = n * Yield.limpwurt(acct.getFarming(), secateurs);
+			}
+			// Snape grass and limpwurt ready in the allotments and flower patches the run visits.
+			for (Stop st : stops)
+			{
+				int[] side = acct.getSidePlots().get(st.getPatch());
+				if (st.isLocked() || side == null || st.isGrowing() && !st.isSideOnly())
+				{
+					continue;
+				}
+				for (int i = 1; allot && i < side.length && i <= st.getPatch().getAllotments(); i++)
+				{
+					if (PatchStatus.picks(HerbRun.PlotType.ALLOTMENT, side[i]) == ItemID.SNAPE_GRASS)
+					{
+						plan.pickingSnape += Yield.snapeGrass(acct.getFarming(), secateurs, tier);
+					}
+				}
+				if (flowers && st.getPatch().isFlower() && side.length > 0
+					&& PatchStatus.picks(HerbRun.PlotType.FLOWER, side[0]) == ItemID.LIMPWURT_ROOT)
+				{
+					plan.pickingLimpwurt += Yield.limpwurt(acct.getFarming(), secateurs);
+				}
 			}
 		}
 		return plan;
