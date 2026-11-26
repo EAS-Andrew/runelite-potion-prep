@@ -1973,10 +1973,9 @@ public class PotionPrepPlugin extends Plugin
 				lines = notCarried(farmPlan, ids);
 				title = "Herb run: not carrying";
 			}
-			else if (!farmMode() && selected != null && panelOpen && isBankOpen()
-				&& (config.showInBank() || PotionPlan.layoutItems(selected).stream().anyMatch(invCounts::containsKey)))
+			else if (!farmMode() && selected != null && panelOpen)
 			{
-				// Prepping at the bank with the panel open (the bank's showing the potion, or you're carrying something for it):
+				// The panel's open with a potion picked:
 				// Herblore gear you own (in the bank, inventory or a placeholder) but aren't wearing.
 				for (int id : Gear.notWorn(i -> bankCounts != null && bankCounts.getOrDefault(i, 0) > 0
 					|| invCounts.containsKey(i) || bankPlaceholders.contains(i), wornIds::contains))
