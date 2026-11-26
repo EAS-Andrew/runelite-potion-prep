@@ -56,7 +56,7 @@ Each row holds what a task needs, but not what it makes:
 
 ### Gear
 
-Herblore gear you own (prescription goggles, amulet of chemistry or alchemist's amulet, Herblore cape) is laid out on the left of the bank like the equipment tab. Gear that's worn, in your inventory or a bank placeholder shows faded. While you're prepping a potion (the bank shows it, or you're carrying its ingredients), an infobox warns of Herblore gear you own but aren't wearing. For a herb run, you can use your own outfit instead: wear it and click **Save worn gear**.
+Herblore gear you own (prescription goggles, amulet of chemistry or alchemist's amulet, Herblore cape) is laid out on the left of the bank like the equipment tab. Gear that's worn, in your inventory or a bank placeholder shows faded. While you're prepping a potion at the bank with the panel open (the bank shows it, or you're carrying its ingredients), an infobox warns of Herblore gear you own but aren't wearing. For a herb run, you can use your own outfit instead: wear it and click **Save worn gear**.
 
 On a herb run, items you can wear (magic secateurs, Ardougne cloak, Xeric's talisman, Explorer's ring and so on) go in any slot your saved gear leaves free.
 

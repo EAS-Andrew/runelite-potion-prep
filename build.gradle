@@ -42,7 +42,7 @@ dependencies {
 }
 
 group = 'com.potionprep'
-version = '2.0.9'
+version = '2.0.10'
 
 tasks.withType(JavaCompile).configureEach {
 	// RuneLite plugins target Java 11. Compiling with --release (rather than
