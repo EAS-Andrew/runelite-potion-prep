@@ -25,8 +25,8 @@ public interface PotionPrepConfig extends Config
 
 	@ConfigItem(
 		keyName = "missingInfobox",
-		name = "Missing items infobox",
-		description = "An infobox warning of what you're missing: herb run items not carried before the first patch, or Herblore gear you own but aren't wearing while prepping a potion.",
+		name = "Missing items warning",
+		description = "A small panel on the game screen warning of what you're missing: herb run items not carried before the first patch, or Herblore gear you own but aren't wearing while the panel is open with a potion picked.",
 		position = 5
 	)
 	default boolean missingInfobox()

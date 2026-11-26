@@ -144,7 +144,6 @@ public class PotionPrepPlugin extends Plugin
 	}
 
 	@Inject private net.runelite.client.ui.overlay.OverlayManager overlayManager;
-	@Inject private net.runelite.client.ui.overlay.infobox.InfoBoxManager infoBoxManager;
 	@Inject private WithdrawOverlay withdrawOverlay;
 	@Inject private RunItemOverlay runItemOverlay;
 	@Inject private TeleportOverlay teleportOverlay;
@@ -198,6 +197,7 @@ public class PotionPrepPlugin extends Plugin
 		overlayManager.add(minimapPath);
 		navOverlay = new NavOverlay(client, spriteManager);
 		overlayManager.add(navOverlay);
+		overlayManager.add(missingOverlay);
 		tagManager.registerTag(TAG, itemId -> trackedIds.contains(itemId));
 
 		panel = new PotionPrepPanel(this, itemManager);
@@ -239,12 +239,8 @@ public class PotionPrepPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
-		if (missingBox != null)
-		{
-			infoBoxManager.removeInfoBox(missingBox);
-			missingBox = null;
-		}
-		missingKey = "";
+		overlayManager.remove(missingOverlay);
+		missingOverlay.set(null, List.of());
 		clientThread.invokeLater(() ->
 		{
 			if (TAG.equals(bankTagsService.getActiveTag()))
@@ -1953,10 +1949,9 @@ public class PotionPrepPlugin extends Plugin
 	}
 
 	/** The infobox warning of what's missing: the herb run's items before the first patch, or Herblore gear not worn while prepping. */
-	private MissingBox missingBox;
-	private String missingKey = "";
+	private final MissingOverlay missingOverlay = new MissingOverlay();
 
-	private void updateMissingBox()
+	private void updateMissing()
 	{
 		List<String> lines = new ArrayList<>();
 		List<Integer> ids = new ArrayList<>();
@@ -1981,28 +1976,11 @@ public class PotionPrepPlugin extends Plugin
 					|| invCounts.containsKey(i) || bankPlaceholders.contains(i), wornIds::contains))
 				{
 					lines.add(itemManager.getItemComposition(id).getName());
-					ids.add(id);
 				}
 				title = "Not wearing";
 			}
 		}
-		String key = title + lines;
-		if (key.equals(missingKey))
-		{
-			return;
-		}
-		missingKey = key;
-		if (missingBox != null)
-		{
-			infoBoxManager.removeInfoBox(missingBox);
-			missingBox = null;
-		}
-		if (!lines.isEmpty())
-		{
-			missingBox = new MissingBox(itemManager.getImage(ids.get(0)), this, lines.size(),
-				"<col=ff5050>" + title + "</col></br>" + String.join("</br>", lines));
-			infoBoxManager.addInfoBox(missingBox);
-		}
+		missingOverlay.set(title, lines);
 	}
 
 	private FarmPlan computeFarm()
@@ -2147,7 +2125,7 @@ public class PotionPrepPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		updateMissingBox();
+		updateMissing();
 		Widget box = client.getWidget(net.runelite.api.gameval.InterfaceID.Objectbox.TEXT);
 		if (box != null && !box.isHidden() && bucket().onDialog(box.getText()))
 		{
@@ -2630,14 +2608,6 @@ public class PotionPrepPlugin extends Plugin
 		{
 			shownThisVisit = false;
 			saveAccount();
-			// Closing the bank before the run's first patch: a last check you've got everything.
-			List<String> missing = farmMode() ? notCarried(farmPlan) : Collections.emptyList();
-			if (!missing.isEmpty())
-			{
-				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-					net.runelite.client.util.ColorUtil.wrapWithColorTag("Herb run: not carrying " + String.join(", ", missing),
-						new java.awt.Color(255, 80, 80)), null);
-			}
 		}
 	}
 
