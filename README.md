@@ -56,7 +56,7 @@ Each row holds what a task needs, but not what it makes:
 
 ### Gear
 
-Herblore gear you own (prescription goggles, amulet of chemistry or alchemist's amulet, Herblore cape) is laid out on the left of the bank like the equipment tab. Gear that's worn, in your inventory or a bank placeholder shows faded. To use your own outfit, wear it and click **Save worn gear**. Potions and herb runs each keep their own.
+Herblore gear you own (prescription goggles, amulet of chemistry or alchemist's amulet, Herblore cape) is laid out on the left of the bank like the equipment tab. Gear that's worn, in your inventory or a bank placeholder shows faded. While you're prepping a potion (the bank shows it, or you're carrying its ingredients), an infobox warns of Herblore gear you own but aren't wearing. For a herb run, you can use your own outfit instead: wear it and click **Save worn gear**.
 
 On a herb run, items you can wear (magic secateurs, Ardougne cloak, Xeric's talisman, Explorer's ring and so on) go in any slot your saved gear leaves free.
 
@@ -87,7 +87,7 @@ Each patch picks the best teleport you can use: unlimited items first, then hous
 
 ### During a run
 
-- Until the first patch, the panel warns in red about anything the run needs that you're not carrying or wearing, and closing the bank without it says so in chat.
+- Until the first patch, the panel and an infobox warn in red about anything the run needs that you're not carrying or wearing (hover the infobox for the list), and closing the bank without it says so in chat.
 - The teleport is highlighted in the inventory, equipment or Magic tab, then the item or spell, then the option to pick in its menu (jewellery, Xeric's talisman, spirit tree, portal nexus, quetzal whistle).
 - The farming icon marks the patch on the minimap and world map. When you arrive, every patch there with something left to do is outlined, in any order you like. Each allotment is outlined on its own and drops out once it's planted and composted.
 - Over each outlined patch float the icons of what to use on it next (spade, rake, plant cure, compost, seed), and the same items are outlined in your inventory. A patch ready to pick shows what you'll get from it: the grimy herb, snape grass, limpwurt root and so on. Out of compost with some left at the tool leprechaun, the leprechaun is outlined with the compost to take; with none there either, the run carries on without it.
@@ -108,6 +108,7 @@ Every section folds when you click its heading and shows a one-line summary. Dur
 - **Bank column:** which column the rows line up to. 8 is the right-most.
 - **Skip growing patches:** leave growing patches out of the herb run (on by default).
 - **Save runes:** pick teleports that cost no runes before spells.
+- **Missing items infobox:** the infobox warnings for herb run items and Herblore gear (on by default).
 - **Herb run travel:** what the plugin can't see from the game: house portals (including the portal nexus), a fairy ring in your house, a mounted Xeric's talisman and spirit trees you've grown. Portals and a house fairy ring are also picked up when you visit your own house.
 
 ## Potions

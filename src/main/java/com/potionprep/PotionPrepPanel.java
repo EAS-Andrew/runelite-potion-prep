@@ -43,13 +43,11 @@ class PotionPrepPanel extends PluginPanel
 	private final JToggleButton potionsMode = new JToggleButton("Potions");
 	private final JToggleButton farmMode = new JToggleButton("Herb run");
 	private final FarmView farmView;
-	private final GearButtons potionGear;
 	private final JPanel potionsView;
 	private final Folds potionFolds;
 	private final Folds.Section potionSection;
 	private final Folds.Section ingredientsSection;
 	private final Folds.Section stepsSection;
-	private final Folds.Section gearSection;
 
 	PotionPrepPanel(PotionPrepPlugin plugin, ItemManager itemManager)
 	{
@@ -177,10 +175,6 @@ class PotionPrepPanel extends PluginPanel
 		stepsSection.body.add(stepsPanel);
 		stepsSection.body.add(Box.createVerticalStrut(10));
 
-		gearSection = potionFolds.add("gear", "Gear");
-		potionGear = new GearButtons(plugin, false);
-		gearSection.body.add(stretch(potionGear));
-		gearSection.body.add(Box.createVerticalStrut(6));
 		potionFolds.apply();
 
 		statusLabel.setFont(FontManager.getRunescapeSmallFont());
@@ -223,8 +217,6 @@ class PotionPrepPanel extends PluginPanel
 
 	void setGearSaved(boolean potions, boolean farm)
 	{
-		potionGear.setSaved(potions);
-		gearSection.summary.setText(potions ? "saved" : "not saved");
 		farmView.setGearSaved(farm);
 	}
 

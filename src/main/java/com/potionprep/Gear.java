@@ -95,6 +95,21 @@ final class Gear
 		return out;
 	}
 
+	/** For each slot with gear you own but nothing of it worn, the best you own. */
+	static List<Integer> notWorn(Predicate<Integer> owned, Predicate<Integer> worn)
+	{
+		List<Integer> out = new ArrayList<>();
+		for (Slot s : Slot.values())
+		{
+			int have = pick(s.ids, owned);
+			if (have != -1 && pick(s.ids, worn) == -1)
+			{
+				out.add(have);
+			}
+		}
+		return out;
+	}
+
 	private static int pick(int[] ids, Predicate<Integer> test)
 	{
 		for (int id : ids)

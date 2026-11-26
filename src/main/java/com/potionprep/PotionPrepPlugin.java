@@ -144,6 +144,7 @@ public class PotionPrepPlugin extends Plugin
 	}
 
 	@Inject private net.runelite.client.ui.overlay.OverlayManager overlayManager;
+	@Inject private net.runelite.client.ui.overlay.infobox.InfoBoxManager infoBoxManager;
 	@Inject private WithdrawOverlay withdrawOverlay;
 	@Inject private RunItemOverlay runItemOverlay;
 	@Inject private TeleportOverlay teleportOverlay;
@@ -238,6 +239,12 @@ public class PotionPrepPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
+		if (missingBox != null)
+		{
+			infoBoxManager.removeInfoBox(missingBox);
+			missingBox = null;
+		}
+		missingKey = "";
 		clientThread.invokeLater(() ->
 		{
 			if (TAG.equals(bankTagsService.getActiveTag()))
@@ -1671,8 +1678,8 @@ public class PotionPrepPlugin extends Plugin
 				}
 			}
 			rows = shown;
-			int[] saved = savedGear(false);
-			gearRows = saved != null ? Gear.fromSlots(saved) : gearRows();
+			// Herblore gear you own; the missing-items infobox says what isn't worn.
+			gearRows = gearRows();
 			trackGear();
 		}
 
@@ -1862,6 +1869,12 @@ public class PotionPrepPlugin extends Plugin
 	 */
 	private List<String> notCarried(FarmPlan fp)
 	{
+		return notCarried(fp, new ArrayList<>());
+	}
+
+	/** @param ids filled with an item for each line, for its icon */
+	private List<String> notCarried(FarmPlan fp, List<Integer> ids)
+	{
 		List<String> out = new ArrayList<>();
 		if (run == null || fp == null || run.getIndex() > 0 || run.current() == null || run.current().isVisited() || atStop)
 		{
@@ -1881,6 +1894,7 @@ public class PotionPrepPlugin extends Plugin
 			{
 				String name = names.containsKey(id) ? names.get(id) : itemManager.getItemComposition(id).getName();
 				out.add(still + " x " + name);
+				ids.add(id);
 			}
 		});
 		Set<Integer> runes = new HashSet<>();
@@ -1896,6 +1910,7 @@ public class PotionPrepPlugin extends Plugin
 				&& sup.getNeed() <= 1 && !has.test(id))
 			{
 				out.add(sup.getName());
+				ids.add(id);
 			}
 		}
 		Set<Farm.Teleport> teles = new java.util.LinkedHashSet<>();
@@ -1922,6 +1937,7 @@ public class PotionPrepPlugin extends Plugin
 			if (!(kind == Farm.MONASTERY_CLOAKS && teles.contains(Farm.Teleport.ARDOUGNE_CLOAK)) && Arrays.stream(kind).noneMatch(has))
 			{
 				out.add(kind == Farm.MONASTERY_CLOAKS ? "Ardougne cloak" : itemManager.getItemComposition(way).getName());
+				ids.add(kind.length > 0 ? kind[0] : way);
 			}
 		}
 		for (Farm.Teleport t : teles)
@@ -1930,9 +1946,64 @@ public class PotionPrepPlugin extends Plugin
 			if (Arrays.stream(t.getIds()).noneMatch(has))
 			{
 				out.add(t.getName());
+				ids.add(t.getIds()[0]);
 			}
 		}
 		return out;
+	}
+
+	/** The infobox warning of what's missing: the herb run's items before the first patch, or Herblore gear not worn while prepping. */
+	private MissingBox missingBox;
+	private String missingKey = "";
+
+	private void updateMissingBox()
+	{
+		List<String> lines = new ArrayList<>();
+		List<Integer> ids = new ArrayList<>();
+		String title = null;
+		if (client.getGameState() == GameState.LOGGED_IN && config.missingInfobox())
+		{
+			if (farmMode() && run != null)
+			{
+				// The plan's only worked out with the bank; until then, the panel's (or a fresh one).
+				if (farmPlan == null)
+				{
+					farmPlan = panelFarmPlan != null ? panelFarmPlan : computeFarm();
+				}
+				lines = notCarried(farmPlan, ids);
+				title = "Herb run: not carrying";
+			}
+			else if (!farmMode() && selected != null
+				&& (config.showInBank() || PotionPlan.layoutItems(selected).stream().anyMatch(invCounts::containsKey)))
+			{
+				// Prepping (the bank's showing the potion, or you're carrying something for it):
+				// Herblore gear you own (in the bank, inventory or a placeholder) but aren't wearing.
+				for (int id : Gear.notWorn(i -> bankCounts != null && bankCounts.getOrDefault(i, 0) > 0
+					|| invCounts.containsKey(i) || bankPlaceholders.contains(i), wornIds::contains))
+				{
+					lines.add(itemManager.getItemComposition(id).getName());
+					ids.add(id);
+				}
+				title = "Not wearing";
+			}
+		}
+		String key = title + lines;
+		if (key.equals(missingKey))
+		{
+			return;
+		}
+		missingKey = key;
+		if (missingBox != null)
+		{
+			infoBoxManager.removeInfoBox(missingBox);
+			missingBox = null;
+		}
+		if (!lines.isEmpty())
+		{
+			missingBox = new MissingBox(itemManager.getImage(ids.get(0)), this, lines.size(),
+				"<col=ff5050>" + title + "</col></br>" + String.join("</br>", lines));
+			infoBoxManager.addInfoBox(missingBox);
+		}
 	}
 
 	private FarmPlan computeFarm()
@@ -2077,6 +2148,7 @@ public class PotionPrepPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
+		updateMissingBox();
 		Widget box = client.getWidget(net.runelite.api.gameval.InterfaceID.Objectbox.TEXT);
 		if (box != null && !box.isHidden() && bucket().onDialog(box.getText()))
 		{
@@ -2822,7 +2894,7 @@ public class PotionPrepPlugin extends Plugin
 		panelFarmPlan = fp;
 		String[] harvest = harvestNote(fp, counts, boosted);
 		String[] rows = runRows(notCarried(fp));
-		boolean potionsGear = savedGear(false) != null;
+		boolean potionsGear = false;
 		boolean farmGear = savedGear(true) != null;
 		Map<Integer, Integer> seeds = new HashMap<>(counts);
 		seedVault.forEach((id, n) -> seeds.merge(id, n, Integer::sum));
