@@ -153,12 +153,7 @@ class PotionPrepPanel extends PluginPanel
 		content.add(stretch(summary));
 		content.add(Box.createVerticalStrut(6));
 
-		showToggle.setFocusable(false);
-		BankToggle.style(showToggle);
-		showToggle.setToolTipText("While on, the bank opens filtered to this potion");
-		showToggle.addActionListener(e -> plugin.setShowInBank(showToggle.isSelected()));
-		content.add(stretch(showToggle));
-		content.add(Box.createVerticalStrut(10));
+		content.add(Box.createVerticalStrut(4));
 
 		ingredientsSection = potionFolds.add("ingredients", "Ingredients");
 		rowsPanel.setLayout(new BoxLayout(rowsPanel, BoxLayout.Y_AXIS));
@@ -202,6 +197,13 @@ class PotionPrepPanel extends PluginPanel
 		root.setLayout(new BoxLayout(root, BoxLayout.Y_AXIS));
 		root.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		root.add(stretch(modes));
+		// One Show in bank for both tabs, in the same place: right under them.
+		showToggle.setFocusable(false);
+		BankToggle.style(showToggle);
+		showToggle.setToolTipText("While on, the bank opens filtered to this potion");
+		showToggle.addActionListener(e -> plugin.setShowInBank(showToggle.isSelected()));
+		root.add(Box.createVerticalStrut(4));
+		root.add(stretch(showToggle));
 		root.add(Box.createVerticalStrut(8));
 		root.add(potionsView);
 		root.add(farmView);
@@ -228,7 +230,9 @@ class PotionPrepPanel extends PluginPanel
 		farmMode.setSelected(farm);
 		potionsView.setVisible(!farm);
 		farmView.setVisible(farm);
-		farmView.update(plan, settings, status, showingInBank, seedCounts, farmingLevel);
+		showToggle.setSelected(showingInBank);
+		showToggle.setToolTipText(farm ? "While on, the bank opens filtered to your herb run" : "While on, the bank opens filtered to this potion");
+		farmView.update(plan, settings, status, seedCounts, farmingLevel);
 	}
 
 	void update(PotionPlan plan, String status, Map<Potion, Integer> makeable, Map<Potion, Double> xp, int boostedLevel, Set<Potion> pie,

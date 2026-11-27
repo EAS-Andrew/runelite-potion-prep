@@ -131,6 +131,11 @@ public class PotionPrepPlugin extends Plugin
 	/** Finished quests, or null until read. */
 	private Set<net.runelite.api.Quest> quests;
 	private boolean questsDirty;
+	/**
+	 * Game ticks left to read quests again after logging in: quest progress (fairy rings
+	 * included) arrives a tick or two after you're in, so the first read can come too soon.
+	 */
+	private int questRereads;
 	/** Seed vault contents, from the last time it was opened. */
 	private Map<Integer, Integer> seedVault = new HashMap<>();
 	/** How the player last entered a house: true own, false someone else's, null unknown. */
@@ -219,6 +224,7 @@ public class PotionPrepPlugin extends Plugin
 				boostedLevel = client.getBoostedSkillLevel(Skill.HERBLORE);
 				farmingLevel = client.getRealSkillLevel(Skill.FARMING);
 				questsDirty = true;
+				questRereads = 3;
 				loggedInAs = client.getAccountHash();
 				ItemContainer worn = client.getItemContainer(InventoryID.WORN);
 				wornIds.clear();
@@ -267,6 +273,7 @@ public class PotionPrepPlugin extends Plugin
 			invCounts.clear();
 			herbPatches.clear();
 			rings.clear();
+			ringReachable.clear();
 			patchVarbits.clear();
 		});
 	}
@@ -720,24 +727,38 @@ public class PotionPrepPlugin extends Plugin
 		net.runelite.api.GameObject ring = null;
 		if (fairy && here != null && !teleported && !atStop)
 		{
+			// The nearest ring you can walk to: BIS, in Ardougne Zoo's unicorn pen, is nearer
+			// the Monastery than DJP but fenced off.
 			int best = Integer.MAX_VALUE;
 			for (net.runelite.api.GameObject o : rings)
 			{
 				int d = o.getWorldLocation().distanceTo2D(here);
-				if (o.getPlane() == here.getPlane() && d < best)
+				if (o.getPlane() == here.getPlane() && d < best && reachable(o, me))
 				{
 					best = d;
 					ring = o;
 				}
 			}
-			if (ring != null && !(stop == atRing || cloak == -1 || best <= RING_CLOSE))
+			// By cloak you'd land about 50 tiles from DJP anyway: a ring that close is as quick on foot
+			// (and teleporting from the Monastery to the Monastery isn't a jump that could be spotted).
+			int close = Farm.ringInHouse(cloak) ? RING_CLOSE : MONASTERY_WALK;
+			if (ring != null && !(stop == atRing || cloak == -1 || best <= close))
 			{
 				ring = null;
 			}
 		}
-		ringFor = ring != null ? stop : null;
+		// The cloak's ring (DJP) is just outside the area loaded around the Monastery: already near
+		// it, head there rather than teleporting to where you are. Its outline takes over once it's loaded.
+		net.runelite.api.coords.WorldPoint ringAt = ring != null ? ring.getWorldLocation() : null;
+		if (ringAt == null && fairy && here != null && !teleported && !atStop && cloak != -1 && !Farm.ringInHouse(cloak)
+			&& here.getPlane() == 0 && here.distanceTo2D(DJP) <= DJP_NEAR)
+		{
+			ringAt = DJP;
+		}
+		ringFor = ringAt != null ? stop : null;
 		ringObject = ring;
-		boolean byCloak = cloak != -1 && stop != atRing && ring == null;
+		ringPoint = ringAt;
+		boolean byCloak = cloak != -1 && stop != atRing && ringAt == null;
 
 		Set<Integer> highlight = new HashSet<>();
 		if (stop != null && !atStop && !teleported && (stop.getItemId() != -1 || byCloak))
@@ -792,11 +813,11 @@ public class PotionPrepPlugin extends Plugin
 
 		// Once the patch is in the loaded area, draw the walk there on the ground and minimap;
 		// a minimap pin/arrow and a world map marker always point to it.
-		net.runelite.api.coords.WorldPoint goal = ring != null ? ring.getWorldLocation() : stop != null ? stop.getPoint() : null;
+		net.runelite.api.coords.WorldPoint goal = ringAt != null ? ringAt : stop != null ? stop.getPoint() : null;
 		navOverlay.set(goal);
 		// A house ring's place is inside the instance, not on the world map: mark the patch there instead.
 		boolean houseRing = ring != null && view != null && view.isInstance();
-		mark(houseRing ? stop.getPoint() : goal, stop == null ? null : ring != null && !houseRing ? "Fairy ring" : stop.getName());
+		mark(houseRing ? stop.getPoint() : goal, stop == null ? null : ringAt != null && !houseRing ? "Fairy ring" : stop.getName());
 		// At the stop, outline the herb patch itself (no hint arrow: that's the game's).
 		// At the stop, outline every patch with something still to do, in whatever order you like.
 		// Over each, the icons of what to use on it next.
@@ -1035,6 +1056,8 @@ public class PotionPrepPlugin extends Plugin
 		net.runelite.api.Player me = client.getLocalPlayer();
 		net.runelite.api.WorldView wv = client.getTopLevelWorldView();
 		boolean toRing = stop != null && ringFor == stop && ringObject != null;
+		// Heading for a ring that isn't loaded yet (DJP from the Monastery): path to its tile once it is.
+		boolean toRingPoint = stop != null && ringFor == stop && ringObject == null && ringPoint != null;
 		// In an instance (your house) only the ring can be walked to: the patch's coordinates don't apply there.
 		if (stop != null && me != null && wv != null && (toRing ? ringObject.getPlane() == wv.getPlane()
 			: !wv.isInstance() && stop.getPoint().getPlane() == wv.getPlane()))
@@ -1044,10 +1067,10 @@ public class PotionPrepPlugin extends Plugin
 			if (from != null && maps != null && maps[wv.getPlane()] != null)
 			{
 				int[][] flags = maps[wv.getPlane()].getFlags();
-				net.runelite.api.GameObject patch = toRing ? ringObject
+				net.runelite.api.GameObject patch = toRing ? ringObject : toRingPoint ? null
 					: stop.hasHerb() ? herbPatchNear(stop.getPatch(), stop.getPoint()) : nearestToDo(stop, me);
 				net.runelite.api.coords.LocalPoint to = patch == null
-					? net.runelite.api.coords.LocalPoint.fromWorld(wv, stop.getPoint()) : null;
+					? net.runelite.api.coords.LocalPoint.fromWorld(wv, toRingPoint ? ringPoint : stop.getPoint()) : null;
 				// The search is only redone when you, the target or the loaded area moves.
 				String key = wv.getBaseX() + "," + wv.getBaseY() + "," + wv.getPlane() + ":" + from.getSceneX() + ","
 					+ from.getSceneY() + ">" + (patch != null ? patch.getSceneMinLocation() + "-" + patch.getSceneMaxLocation()
@@ -1091,9 +1114,17 @@ public class PotionPrepPlugin extends Plugin
 	private boolean lastInstance, lastHouse;
 	/** A ring this close is walked to, not reached by cloak. */
 	private static final int RING_CLOSE = 25;
+	/** Going by Ardougne cloak, a ring this close is walked to: about the walk from where the cloak lands to DJP. */
+	private static final int MONASTERY_WALK = 60;
 	/** The stop being reached by the fairy ring in view, and that ring; null otherwise. */
 	private HerbRun.Stop ringFor;
 	private net.runelite.api.GameObject ringObject;
+	/** Where that ring is, also when it isn't loaded yet (DJP, seen from the Monastery). */
+	private net.runelite.api.coords.WorldPoint ringPoint;
+	/** Fairy ring DJP, the one the Ardougne cloak's Monastery Teleport is for (RuneLite's world map). */
+	private static final net.runelite.api.coords.WorldPoint DJP = new net.runelite.api.coords.WorldPoint(2657, 3232, 0);
+	/** Within this of DJP (the Monastery and around), walk to it rather than teleport by cloak. */
+	private static final int DJP_NEAR = 70;
 
 	/** The fairy ring stop whose ring you've reached; the Ardougne cloak is done with. */
 	private HerbRun.Stop atRing;
@@ -1283,6 +1314,28 @@ public class PotionPrepPlugin extends Plugin
 	private final Map<Integer, Integer> transmitIds = new HashMap<>();
 
 	/** Remember a patch object: by its farming varbit, or failing that its id or name. */
+	/** Whether each loaded fairy ring can be walked to from where you were when first checked; cleared with the scene. */
+	private final Map<net.runelite.api.GameObject, Boolean> ringReachable = new HashMap<>();
+
+	private boolean reachable(net.runelite.api.GameObject ring, net.runelite.api.Player me)
+	{
+		return ringReachable.computeIfAbsent(ring, o ->
+		{
+			net.runelite.api.WorldView wv = client.getTopLevelWorldView();
+			net.runelite.api.coords.LocalPoint from = me != null ? me.getLocalLocation() : null;
+			net.runelite.api.CollisionData[] maps = wv != null ? wv.getCollisionMaps() : null;
+			if (from == null || maps == null || maps[wv.getPlane()] == null)
+			{
+				// Can't tell: don't rule it out.
+				return true;
+			}
+			net.runelite.api.Point min = o.getSceneMinLocation();
+			net.runelite.api.Point max = o.getSceneMaxLocation();
+			return !WalkPath.find(maps[wv.getPlane()].getFlags(), from.getSceneX(), from.getSceneY(),
+				min.getX(), min.getY(), max.getX(), max.getY()).isEmpty();
+		});
+	}
+
 	/** Fairy rings in the loaded area. */
 	private final Set<net.runelite.api.GameObject> rings = new HashSet<>();
 	/** Object id to whether it's a fairy ring. */
@@ -2120,11 +2173,17 @@ public class PotionPrepPlugin extends Plugin
 		herbPatches.remove(event.getGameObject());
 		patchVarbits.remove(event.getGameObject());
 		rings.remove(event.getGameObject());
+		ringReachable.remove(event.getGameObject());
 	}
 
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
+		if (questRereads > 0)
+		{
+			questRereads--;
+			questsDirty = true;
+		}
 		updateMissing();
 		Widget box = client.getWidget(net.runelite.api.gameval.InterfaceID.Objectbox.TEXT);
 		if (box != null && !box.isHidden() && bucket().onDialog(box.getText()))
@@ -2677,6 +2736,7 @@ public class PotionPrepPlugin extends Plugin
 			housePortals.clear();
 			herbPatches.clear();
 			rings.clear();
+			ringReachable.clear();
 			patchVarbits.clear();
 			pathKey = null;
 			walk = Collections.emptyList();
@@ -2715,6 +2775,7 @@ public class PotionPrepPlugin extends Plugin
 				boostedLevel = client.getBoostedSkillLevel(Skill.HERBLORE);
 				farmingLevel = client.getRealSkillLevel(Skill.FARMING);
 				questsDirty = true;
+				questRereads = 3;
 				relayout();
 				pushToPanel(null);
 			});

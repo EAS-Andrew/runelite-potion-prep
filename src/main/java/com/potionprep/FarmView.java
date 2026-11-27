@@ -43,7 +43,6 @@ class FarmView extends JPanel
 	private final JComboBox<HerbSeed> herb = new JComboBox<>(HerbSeed.values());
 	private final JComboBox<FlowerSeed> flower = new JComboBox<>(FlowerSeed.values());
 	private final JComboBox<AllotmentSeed> allotment = new JComboBox<>(AllotmentSeed.values());
-	private final JToggleButton showToggle = new JToggleButton("Show in bank");
 	private final Map<Patch, JCheckBox> patchBoxes = new EnumMap<>(Patch.class);
 	private final Map<Patch, JLabel> patchTeleports = new EnumMap<>(Patch.class);
 	private final Map<Patch, JLabel> patchStates = new EnumMap<>(Patch.class);
@@ -118,13 +117,6 @@ class FarmView extends JPanel
 		runBox.add(runButtons, BorderLayout.CENTER);
 		add(stretch(startRun));
 		add(stretch(runBox));
-		// Show in bank sits with the other actions, above the run's patch list.
-		showToggle.setFocusable(false);
-		BankToggle.style(showToggle);
-		showToggle.setToolTipText("While on, the bank opens filtered to your herb run");
-		showToggle.addActionListener(e -> plugin.setShowInBank(showToggle.isSelected()));
-		add(Box.createVerticalStrut(4));
-		add(stretch(showToggle));
 		// Room between the buttons and the patch list.
 		add(Box.createVerticalStrut(8));
 		runRows.setLayout(new BoxLayout(runRows, BoxLayout.Y_AXIS));
@@ -186,7 +178,7 @@ class FarmView extends JPanel
 		add(left(statusLabel));
 	}
 
-	void update(FarmPlan plan, FarmPlan.Settings settings, String status, boolean showingInBank,
+	void update(FarmPlan plan, FarmPlan.Settings settings, String status,
 		Map<Integer, Integer> seedCounts, int farmingLevel)
 	{
 		this.seedCounts = seedCounts;
@@ -217,7 +209,6 @@ class FarmView extends JPanel
 			herb.setSelectedItem(settings.getHerb());
 			flower.setSelectedItem(settings.getFlower());
 			allotment.setSelectedItem(settings.getAllotment());
-			showToggle.setSelected(showingInBank);
 			for (Patch p : Patch.values())
 			{
 				patchBoxes.get(p).setSelected(settings.getPatches().contains(p));
