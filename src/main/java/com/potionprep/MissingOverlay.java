@@ -17,7 +17,7 @@ class MissingOverlay extends OverlayPanel
 
 	MissingOverlay()
 	{
-		setPosition(OverlayPosition.TOP_LEFT);
+		setPosition(OverlayPosition.BOTTOM_RIGHT);
 	}
 
 	void set(String title, List<String> lines)
