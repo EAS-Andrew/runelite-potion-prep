@@ -140,14 +140,39 @@ public class PatchStatus
 	/** The growth tick {@code ticks} ticks after the one {@code at} falls in. */
 	static long tickTime(int ticks, long at, Integer offsetMin, Integer precision)
 	{
+		return tickTime(ticks, at, offsetMin, precision, TICK_MINUTES);
+	}
+
+	/** The same, for crops that grow every {@code minutes} minutes (allotments 10, flowers 5). */
+	static long tickTime(int ticks, long at, Integer offsetMin, Integer precision, int minutes)
+	{
 		long offset = 0;
-		if (offsetMin != null && precision != null && (precision >= TICK_MINUTES || precision >= 40))
+		if (offsetMin != null && precision != null && precision >= minutes)
 		{
-			offset = (offsetMin % TICK_MINUTES) * 60L;
+			offset = (offsetMin % minutes) * 60L;
 		}
 		long shifted = at + offset;
-		long tick = shifted - shifted % (TICK_MINUTES * 60L);
-		return tick + (long) ticks * TICK_MINUTES * 60 - offset;
+		long tick = shifted - shifted % (minutes * 60L);
+		return tick + (long) ticks * minutes * 60 - offset;
+	}
+
+	/**
+	 * Snape grass or limpwurt Time Tracking saw growing that has had time to finish:
+	 * the value it has now (ready to pick), or {@code value} unchanged.
+	 * Snape grass grows at 128-134 and is ready at 138 (allotment, 10-minute ticks);
+	 * limpwurt grows at 28-31 and is ready at 32 (flower, 5-minute ticks).
+	 * Like the harvest estimate, this assumes it didn't get diseased.
+	 */
+	static int grown(boolean allotment, int value, long seen, Integer offsetMin, Integer precision, long now)
+	{
+		int last = allotment ? 134 : 31;
+		int first = allotment ? 128 : 28;
+		if (value < first || value > last)
+		{
+			return value;
+		}
+		long readyAt = tickTime(last - value + 1, seen, offsetMin, precision, allotment ? 10 : 5);
+		return readyAt <= now ? (allotment ? 138 : 32) : value;
 	}
 
 	/** What to do at a herb patch right now, from its live varbit value. */
@@ -299,9 +324,14 @@ public class PatchStatus
 		return v != null ? v : new int[0];
 	}
 
-	/** Flower and allotment values Time Tracking last saw, per location: {flower, allotment 1, allotment 2}, -1 unknown. */
-	static Map<Patch, int[]> readSide(ConfigManager config)
+	/**
+	 * Flower and allotment values Time Tracking last saw, per location: {flower, allotment 1, allotment 2}, -1 unknown.
+	 * Snape grass and limpwurt that have had time to grow since are given as ready.
+	 */
+	static Map<Patch, int[]> readSide(ConfigManager config, long now)
 	{
+		Integer offset = config.getRSProfileConfiguration("timetracking", "farmTickOffset", Integer.class);
+		Integer precision = config.getRSProfileConfiguration("timetracking", "farmTickOffsetPrecision", Integer.class);
 		Map<Patch, int[]> out = new EnumMap<>(Patch.class);
 		SIDE.forEach((patch, varbits) ->
 		{
@@ -315,7 +345,13 @@ public class PatchStatus
 				{
 					try
 					{
-						values[i] = Integer.parseInt(stored.split(":")[0]);
+						String[] parts = stored.split(":");
+						values[i] = Integer.parseInt(parts[0]);
+						if (parts.length == 2)
+						{
+							// What was growing when last seen may be ready by now.
+							values[i] = grown(i > 0, values[i], Long.parseLong(parts[1]), offset, precision, now);
+						}
 					}
 					catch (NumberFormatException ignored)
 					{

@@ -97,8 +97,6 @@ public final class FarmPlan
 		boolean skipGrowing = true;
 		/** Epoch seconds, for "ready in". */
 		long now;
-		/** Kandarin diary tiers done past easy (0 none, 1 medium, 2 hard, 3 elite): Catherby yield. */
-		int kandarinDiary;
 		/** Quetzal whistle charges from its last chat message, -1 if unknown. */
 		@Builder.Default
 		int whistleCharges = -1;
@@ -107,10 +105,6 @@ public final class FarmPlan
 		int xericCharges = -1;
 		/** Tithe Farm's Auto-weed is on: patches never need raking. */
 		boolean autoweed;
-		/** Kourend easy diary: Hosidius can't get diseased. */
-		boolean kourendEasy;
-		/** Kourend hard diary: more herbs at Hosidius and the Farming Guild. */
-		boolean kourendHard;
 		/** Today's uses of the daily-limited farm teleports (cloak from chat, ring and legs from varbits). */
 		int cloakUses;
 		int ringUses;
@@ -122,10 +116,6 @@ public final class FarmPlan
 		boolean groupingReady = true;
 		/** Prefer teleports that cost no runes (items, tablets, fairy rings, portals). */
 		boolean saveRunes;
-		/** Attas growing in the anima patch (a config setting): more herbs everywhere. */
-		boolean attas;
-		/** 16,000 Fortis Colosseum glory: the Civitas patch can't get diseased. */
-		boolean civitasDiseaseFree;
 		/** Seed vault contents, or empty if it hasn't been opened. */
 		@Builder.Default
 		Map<Integer, Integer> seedVault = Collections.emptyMap();
@@ -205,24 +195,14 @@ public final class FarmPlan
 	private final List<int[]> layoutRows;
 	/** Herb being planted. */
 	private final HerbSeed herb;
-	/** Grimy herbs expected from this run's plantings, 0 if unknown. */
-	private final double expectedHerbs;
-	/** Grimy herbs expected from what's ready in the run's patches now, by herb (Time Tracking's view). */
-	private final Map<HerbSeed, Double> picking = new java.util.EnumMap<>(HerbSeed.class);
-	/** Snape grass and limpwurt roots expected from the allotments and flower patches planted. */
-	private double expectedSnape;
 	/** Compost comes from casting Fertile Soil, not items. */
 	private boolean fertileSoil;
-	private double expectedLimpwurt;
-	/** Snape grass and limpwurt roots expected from what's ready in the run's allotments and flower patches now. */
-	private double pickingSnape;
-	private double pickingLimpwurt;
 
 	/** How many of each item to withdraw (seeds, compost, runes, tablets), for the bank overlay. */
 	private final Map<Integer, Integer> withdraw;
 
 	private FarmPlan(List<Stop> stops, List<Supply> supplies, List<Step> steps, List<int[]> layoutRows,
-		HerbSeed herb, double expectedHerbs, Map<Integer, Integer> withdraw)
+		HerbSeed herb, Map<Integer, Integer> withdraw)
 	{
 		this.withdraw = withdraw;
 		this.stops = stops;
@@ -230,7 +210,6 @@ public final class FarmPlan
 		this.steps = steps;
 		this.layoutRows = layoutRows;
 		this.herb = herb;
-		this.expectedHerbs = expectedHerbs;
 	}
 
 	/** For tests: no quests, spells or storage known. */
@@ -545,7 +524,6 @@ public final class FarmPlan
 		{
 			steps.add(0, new Step(Severity.WARNING, skipped > 0 ? "Nothing ready yet" : "No patches selected", null));
 		}
-		double expected = expectedHerbs(s.getHerb(), planted, acct, tier, owned, leprechaun);
 		Map<Integer, Integer> withdraw = new HashMap<>(tabletsNeeded);
 		withdraw.putAll(runes.allocate());
 		Set<Integer> runeIds = new java.util.HashSet<>();
@@ -572,60 +550,8 @@ public final class FarmPlan
 				}
 			}
 		}
-		FarmPlan plan = new FarmPlan(stops, supplies, steps, rows, s.getHerb(), expected, withdraw);
+		FarmPlan plan = new FarmPlan(stops, supplies, steps, rows, s.getHerb(), withdraw);
 		plan.fertileSoil = fertileSoil;
-		// What's ready to pick on this run. How it was composted isn't known: assume as this run.
-		for (Stop st : stops)
-		{
-			PatchStatus status = st.getStatus();
-			if (!st.isLocked() && !st.isGrowing() && !st.isSideOnly() && status != null
-				&& status.getState() == PatchStatus.State.READY && status.getCrop() != null)
-			{
-				double n = expectedHerbs(status.getCrop(), Collections.singletonList(st.getPatch()), acct, tier, owned, leprechaun);
-				if (n > 0)
-				{
-					plan.picking.merge(status.getCrop(), n, Double::sum);
-				}
-			}
-		}
-		if (acct.getFarming() > 0)
-		{
-			boolean secateurs = owned.test(Farm.MAGIC_SECATEURS) || leprechaun.getOrDefault(Farm.MAGIC_SECATEURS, 0) > 0;
-			// Only as many plantings as you have seeds for.
-			if (allot)
-			{
-				int seedsHave = counts.getOrDefault(s.getAllotment().getSeedId(), 0) + vault.getOrDefault(s.getAllotment().getSeedId(), 0);
-				int n = Math.min(allotments, seedsHave / Farm.SEEDS_PER_ALLOTMENT);
-				plan.expectedSnape = n * Yield.snapeGrass(acct.getFarming(), secateurs, tier);
-			}
-			if (flowers)
-			{
-				int seedsHave = counts.getOrDefault(s.getFlower().getSeedId(), 0) + vault.getOrDefault(s.getFlower().getSeedId(), 0);
-				int n = Math.min(flowerPatches, seedsHave);
-				plan.expectedLimpwurt = n * Yield.limpwurt(acct.getFarming(), secateurs);
-			}
-			// Snape grass and limpwurt ready in the allotments and flower patches the run visits.
-			for (Stop st : stops)
-			{
-				int[] side = acct.getSidePlots().get(st.getPatch());
-				if (st.isLocked() || side == null || st.isGrowing() && !st.isSideOnly())
-				{
-					continue;
-				}
-				for (int i = 1; allot && i < side.length && i <= st.getPatch().getAllotments(); i++)
-				{
-					if (PatchStatus.picks(HerbRun.PlotType.ALLOTMENT, side[i]) == ItemID.SNAPE_GRASS)
-					{
-						plan.pickingSnape += Yield.snapeGrass(acct.getFarming(), secateurs, tier);
-					}
-				}
-				if (flowers && st.getPatch().isFlower() && side.length > 0
-					&& PatchStatus.picks(HerbRun.PlotType.FLOWER, side[0]) == ItemID.LIMPWURT_ROOT)
-				{
-					plan.pickingLimpwurt += Yield.limpwurt(acct.getFarming(), secateurs);
-				}
-			}
-		}
 		return plan;
 	}
 
@@ -638,28 +564,6 @@ public final class FarmPlan
 		}
 		return compostId == ItemID.BUCKET_ULTRACOMPOST ? 3 : compostId == ItemID.BUCKET_SUPERCOMPOST ? 2
 			: compostId == ItemID.BUCKET_COMPOST ? 1 : 0;
-	}
-
-	static double expectedHerbs(HerbSeed herb, List<Patch> planted, Account acct, int compost,
-		Predicate<Integer> owned, Map<Integer, Integer> leprechaun)
-	{
-		if (acct.getFarming() <= 0)
-		{
-			return 0;
-		}
-		// Secateurs at the leprechaun count: the plan tells you to take them out.
-		double item = (owned.test(Farm.MAGIC_SECATEURS) || leprechaun.getOrDefault(Farm.MAGIC_SECATEURS, 0) > 0 ? 0.10 : 0)
-			+ (owned.test(ItemID.SKILLCAPE_FARMING) || owned.test(ItemID.SKILLCAPE_FARMING_TRIMMED)
-			|| owned.test(ItemID.SKILLCAPE_MAX) ? 0.05 : 0);
-		double total = 0;
-		for (Patch p : planted)
-		{
-			int diary = p == Patch.CATHERBY ? KANDARIN_BONUS[Math.max(0, Math.min(3, acct.getKandarinDiary()))]
-				: (p == Patch.HOSIDIUS || p == Patch.FARMING_GUILD) && acct.isKourendHard() ? 10 : 0;
-			total += Yield.expected(herb.getLowSave(), acct.getFarming(), item, diary, acct.isAttas(), compost,
-				diseaseFree(p, acct));
-		}
-		return total;
 	}
 
 	/** "1h 5m" / "12m". */
@@ -686,17 +590,6 @@ public final class FarmPlan
 		boolean growing = index == 0 ? v >= 28 && v <= 31 || v >= 92 && v <= 95
 			: v >= 63 && v <= 69 || v >= 128 && v <= 134;
 		return !growing;
-	}
-
-	/** Catherby's chance-to-save bonus by Kandarin diary tier (none, medium, hard, elite), out of 256. */
-	private static final int[] KANDARIN_BONUS = {0, 10, 17, 25};
-
-	/** Patches that can't get diseased (OSRS Wiki: Herb patch). */
-	static boolean diseaseFree(Patch p, Account acct)
-	{
-		return p == Patch.TROLL_STRONGHOLD || p == Patch.WEISS || p == Patch.HARMONY
-			|| p == Patch.HOSIDIUS && acct.isKourendEasy()
-			|| p == Patch.CIVITAS && acct.isCivitasDiseaseFree();
 	}
 
 	static String lockReason(Patch p, Account acct)

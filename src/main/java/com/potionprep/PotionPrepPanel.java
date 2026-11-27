@@ -154,6 +154,7 @@ class PotionPrepPanel extends PluginPanel
 		content.add(Box.createVerticalStrut(6));
 
 		showToggle.setFocusable(false);
+		BankToggle.style(showToggle);
 		showToggle.setToolTipText("While on, the bank opens filtered to this potion");
 		showToggle.addActionListener(e -> plugin.setShowInBank(showToggle.isSelected()));
 		content.add(stretch(showToggle));
@@ -220,14 +221,14 @@ class PotionPrepPanel extends PluginPanel
 		farmView.setGearSaved(farm);
 	}
 
-	void updateFarm(FarmPlan plan, FarmPlan.Settings settings, String status, boolean showingInBank, boolean farm, String[] harvest,
+	void updateFarm(FarmPlan plan, FarmPlan.Settings settings, String status, boolean showingInBank, boolean farm,
 		Map<Integer, Integer> seedCounts, int farmingLevel)
 	{
 		potionsMode.setSelected(!farm);
 		farmMode.setSelected(farm);
 		potionsView.setVisible(!farm);
 		farmView.setVisible(farm);
-		farmView.update(plan, settings, status, showingInBank, harvest, seedCounts, farmingLevel);
+		farmView.update(plan, settings, status, showingInBank, seedCounts, farmingLevel);
 	}
 
 	void update(PotionPlan plan, String status, Map<Potion, Integer> makeable, Map<Potion, Double> xp, int boostedLevel, Set<Potion> pie,

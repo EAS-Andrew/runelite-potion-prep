@@ -231,7 +231,6 @@ public class HerbRun
 			|| plan.getSupplies().stream().anyMatch(s -> isCompost(s.getItemId()) && s.getHave() > 0);
 		HerbRun run = new HerbRun(stops, compost, now);
 		run.fertileSoil = plan.isFertileSoil();
-		run.expected = plan.getExpectedHerbs();
 		run.seedIds.put(PlotType.HERB, settings.getHerb().getSeedId());
 		run.seedIds.put(PlotType.FLOWER, settings.getFlower().getSeedId());
 		run.seedIds.put(PlotType.ALLOTMENT, settings.getAllotment().getSeedId());
@@ -423,9 +422,6 @@ public class HerbRun
 	/** Herbs picked on this run, one per "You pick a Grimy ..." message. */
 	@Getter
 	private int picked;
-	/** Herbs the plan expects this run's planting to give, picked next run. */
-	@Getter
-	private double expected;
 
 	private static final Pattern PICK = Pattern.compile("^You pick (?:a|an|\\d+) grimy ", Pattern.CASE_INSENSITIVE);
 

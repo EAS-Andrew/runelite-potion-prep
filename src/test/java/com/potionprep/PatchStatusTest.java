@@ -59,6 +59,23 @@ public class PatchStatusTest
 	}
 
 	@Test
+	public void snapeAndLimpwurtGrowOnWhileAway()
+	{
+		long seen = 1_000_000_200L; // just after a 10-minute (and 5-minute) tick
+		// Snape grass seen at its first stage (128): 7 ten-minute ticks to go.
+		assertEquals(128, PatchStatus.grown(true, 128, seen, null, null, seen + 60 * 60));
+		assertEquals(138, PatchStatus.grown(true, 128, seen, null, null, seen + 70 * 60));
+		// Its last stage: ready at the next tick.
+		assertEquals(138, PatchStatus.grown(true, 134, seen, null, null, seen + 10 * 60));
+		// Limpwurt at 28: 4 five-minute ticks.
+		assertEquals(28, PatchStatus.grown(false, 28, seen, null, null, seen + 15 * 60));
+		assertEquals(32, PatchStatus.grown(false, 28, seen, null, null, seen + 20 * 60));
+		// Anything else is left alone.
+		assertEquals(24, PatchStatus.grown(true, 24, seen, null, null, seen + 999 * 60));
+		assertEquals(138, PatchStatus.grown(true, 138, seen, null, null, seen));
+	}
+
+	@Test
 	public void allotmentAndFlowerStates()
 	{
 		assertEquals(PatchStatus.Task.PICK, PatchStatus.sideTask(true, 11));

@@ -34,6 +34,8 @@ class FarmView extends JPanel
 	private static final Color GOOD = new Color(0x5FBF5F);
 	private static final Color ACTION = new Color(0xFFB000);
 	private static final Color BAD = new Color(0xE05A5A);
+	private static final Color START = new Color(0x2F7D32);
+	private static final Color STOP = new Color(0x8E2C2C);
 
 	private final PotionPrepPlugin plugin;
 	private final ItemManager itemManager;
@@ -54,14 +56,12 @@ class FarmView extends JPanel
 	private final JPanel suppliesPanel = new JPanel();
 	private final JPanel stepsPanel = new JPanel();
 	private final JLabel statusLabel = new JLabel();
-	private final JPanel harvestBox = new JPanel();
-	private static final String PLANTING_TIP = "Expected from this run's plantings: Farming level, compost, magic secateurs, "
-		+ "Farming cape, diaries and the chance of disease";
 	private final javax.swing.JButton startRun = new javax.swing.JButton("Start run");
 	private final javax.swing.JButton skipStop = new javax.swing.JButton("Skip patch");
 	private final javax.swing.JButton stopRun = new javax.swing.JButton("Stop run");
 	private final JPanel runRows = new JPanel();
 	private JPanel runButtonsPanel;
+	private final JLabel runState = new JLabel();
 	final GearButtons gearButtons;
 	private final Folds folds;
 	private Folds.Section seedsSection;
@@ -69,10 +69,7 @@ class FarmView extends JPanel
 	private Folds.Section suppliesSection;
 	private Folds.Section stepsSection;
 	private Folds.Section gearSection;
-	private final JLabel harvestLabel = new JLabel();
-	private final JLabel harvestSub = new JLabel();
 	/** Under what's picked this run: what this run's plantings should give next time. */
-	private final JLabel harvestNext = new JLabel();
 	/** Seeds you have (bank, inventory, seed vault) and your Farming level, for the dropdowns. */
 	private Map<Integer, Integer> seedCounts = java.util.Collections.emptyMap();
 	/** Patches on the run of each kind, to colour seed counts by whether they're enough. */
@@ -105,41 +102,41 @@ class FarmView extends JPanel
 		stopRun.addActionListener(e -> plugin.stopRun());
 		runButtons.add(skipStop);
 		runButtons.add(stopRun);
+		// Start stands out in green; Stop is red, so it's not hit by mistake for Skip.
+		startRun.setBackground(START);
+		startRun.setForeground(Color.WHITE);
+		startRun.setFont(FontManager.getRunescapeBoldFont());
+		stopRun.setBackground(STOP);
+		stopRun.setForeground(Color.WHITE);
+		// During a run: a line saying so, then Skip / Stop.
+		runState.setFont(FontManager.getRunescapeBoldFont());
+		runState.setForeground(GOOD);
+		runState.setBorder(new EmptyBorder(0, 2, 4, 0));
+		JPanel runBox = new JPanel(new BorderLayout());
+		runBox.setOpaque(false);
+		runBox.add(runState, BorderLayout.NORTH);
+		runBox.add(runButtons, BorderLayout.CENTER);
 		add(stretch(startRun));
-		add(stretch(runButtons));
+		add(stretch(runBox));
+		// Show in bank sits with the other actions, above the run's patch list.
+		showToggle.setFocusable(false);
+		BankToggle.style(showToggle);
+		showToggle.setToolTipText("While on, the bank opens filtered to your herb run");
+		showToggle.addActionListener(e -> plugin.setShowInBank(showToggle.isSelected()));
+		add(Box.createVerticalStrut(4));
+		add(stretch(showToggle));
+		// Room between the buttons and the patch list.
+		add(Box.createVerticalStrut(8));
 		runRows.setLayout(new BoxLayout(runRows, BoxLayout.Y_AXIS));
 		runRows.setOpaque(false);
 		runRows.setAlignmentX(LEFT_ALIGNMENT);
 		add(runRows);
-		runButtonsPanel = runButtons;
+		runButtonsPanel = runBox;
 		setRun(null);
 		add(Box.createVerticalStrut(10));
 
-		harvestBox.setLayout(new BoxLayout(harvestBox, BoxLayout.Y_AXIS));
-		harvestBox.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		harvestBox.setBorder(new EmptyBorder(6, 8, 6, 8));
-		harvestLabel.setFont(FontManager.getRunescapeBoldFont());
-		harvestLabel.setForeground(GOOD);
-
-		harvestSub.setFont(FontManager.getRunescapeSmallFont());
-		harvestSub.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		harvestBox.add(left(harvestLabel));
-		harvestBox.add(left(harvestSub));
-		harvestNext.setFont(FontManager.getRunescapeSmallFont());
-		harvestNext.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		harvestNext.setToolTipText(PLANTING_TIP);
-		harvestBox.add(left(harvestNext));
-		harvestBox.setVisible(false);
-		// Not stretch(): its text changes, so its height must too.
-		harvestBox.setAlignmentX(LEFT_ALIGNMENT);
-		add(harvestBox);
 		add(Box.createVerticalStrut(6));
 
-		showToggle.setFocusable(false);
-		showToggle.setToolTipText("While on, the bank opens filtered to your herb run");
-		showToggle.addActionListener(e -> plugin.setShowInBank(showToggle.isSelected()));
-		add(stretch(showToggle));
-		add(Box.createVerticalStrut(4));
 		seedsSection = folds.add("seeds", "Seeds");
 		seedsSection.body.add(stretch(combo(herb, "Herb seed", () -> plugin.setFarmSetting("farmHerb", ((HerbSeed) herb.getSelectedItem()).name()))));
 		seedsSection.body.add(Box.createVerticalStrut(4));
@@ -189,7 +186,7 @@ class FarmView extends JPanel
 		add(left(statusLabel));
 	}
 
-	void update(FarmPlan plan, FarmPlan.Settings settings, String status, boolean showingInBank, String[] harvest,
+	void update(FarmPlan plan, FarmPlan.Settings settings, String status, boolean showingInBank,
 		Map<Integer, Integer> seedCounts, int farmingLevel)
 	{
 		this.seedCounts = seedCounts;
@@ -214,19 +211,6 @@ class FarmView extends JPanel
 		herb.repaint();
 		flower.repaint();
 		allotment.repaint();
-		harvestBox.setVisible(harvest != null);
-		if (harvest != null)
-		{
-			harvestLabel.setText(wrap(harvest[0]));
-			harvestSub.setText(harvest[1] != null ? wrap(harvest[1]) : "");
-			harvestSub.setVisible(harvest[1] != null);
-			// {head, potions, next run}: with a next-run line, the head is what's picked now.
-			boolean picking = harvest.length > 2 && harvest[2] != null;
-			harvestNext.setText(picking ? wrap(harvest[2]) : "");
-			harvestNext.setVisible(picking);
-			harvestLabel.setToolTipText(picking ? "Expected from the herbs ready in your patches, as Time Tracking last saw "
-				+ "them, composted as this run" : PLANTING_TIP);
-		}
 		updating = true;
 		try
 		{
@@ -350,6 +334,17 @@ class FarmView extends JPanel
 		runRows.removeAll();
 		if (running)
 		{
+			int total = rows.length - 1;
+			int at = 0;
+			for (int i = 0; i < total; i++)
+			{
+				String st = rows[i].split("\\|", -1)[1];
+				if (st.equals("Now"))
+				{
+					at = i + 1;
+				}
+			}
+			runState.setText(at > 0 ? "Run in progress: patch " + at + " of " + total : "Run in progress");
 			for (int i = 0; i < rows.length - 1; i++)
 			{
 				String[] parts = rows[i].split("\\|", -1);

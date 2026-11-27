@@ -95,10 +95,6 @@ Each patch picks the best teleport you can use: unlimited items first, then hous
 - Out of compost or seeds, the run carries on without them. Once your herb seeds are used up, it only visits patches with something to pick or cure.
 - At the end it says how many herbs you picked. Logging out keeps the run for that account.
 
-### Harvest estimate
-
-What you'll pick this run from the herbs, snape grass and limpwurt ready in your patches (as Time Tracking last saw them), what it adds to your potions, and what this run's plantings should give next time. Herbs use the OSRS Wiki's formula with your Farming level, compost, magic secateurs, Farming cape, Kandarin and Kourend diaries, attas and disease risk (none at Troll Stronghold, Weiss, Harmony, Hosidius with the Kourend easy diary, or Civitas illa Fortis with 16,000 Colosseum glory). Snape grass uses its own chance to save, and limpwurt is 3 roots plus a bonus that grows with Farming level. Allotments and flowers assume the crop survives. It's an average, not a promise.
-
 ### Panel sections
 
 Every section folds when you click its heading and shows a one-line summary. During a run only To do stays open, and each state remembers what you opened.

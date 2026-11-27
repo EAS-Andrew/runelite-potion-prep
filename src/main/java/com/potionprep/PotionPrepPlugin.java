@@ -625,9 +625,7 @@ public class PotionPrepPlugin extends Plugin
 		{
 			// Last patch done: the run stops itself.
 			runDone = "Run done in " + FarmPlan.minutes((System.currentTimeMillis() - run.getStartedAt()) / 1000)
-				// What you picked now, and roughly what this run's planting will give next time.
-				+ (run.getPicked() > 0 ? ": picked " + run.getPicked() : "")
-				+ (run.getExpected() > 0 ? ", next ~" + Math.round(run.getExpected()) : "");
+				+ (run.getPicked() > 0 ? ": picked " + run.getPicked() : "");
 			endRun();
 			pushToPanel(null);
 		}
@@ -706,11 +704,12 @@ public class PotionPrepPlugin extends Plugin
 		{
 			teleportedTo = stop;
 		}
-		// Going by fairy ring: the Ardougne cloak first, to the Monastery by ring DJP.
+		// Going by fairy ring: first to a ring (your house's, or the Monastery's by Ardougne cloak).
 		int cloak = ringCloak(stop);
-		if (cloak != -1 && stop != teleportedTo && jumped)
+		boolean fairy = stop != null && stop.getTeleport() != null && stop.getTeleport().getKind() == Farm.Teleport.Kind.FAIRY;
+		if (fairy && stop != teleportedTo && (jumped || houseScene && !lastHouse))
 		{
-			// Jumped, but not to the patch: at the ring now, so the cloak's done with.
+			// Jumped (or into your house), but not to the patch: by a ring now, so the way there's done with.
 			atRing = stop;
 		}
 		lastPos = here;
@@ -719,8 +718,7 @@ public class PotionPrepPlugin extends Plugin
 		boolean teleported = stop != null && stop == teleportedTo;
 		// The ring itself, once you're by one (after the cloak, or one was close anyway).
 		net.runelite.api.GameObject ring = null;
-		if (stop != null && here != null && !teleported && !atStop && stop.getTeleport() != null
-			&& stop.getTeleport().getKind() == Farm.Teleport.Kind.FAIRY)
+		if (fairy && here != null && !teleported && !atStop)
 		{
 			int best = Integer.MAX_VALUE;
 			for (net.runelite.api.GameObject o : rings)
@@ -796,7 +794,9 @@ public class PotionPrepPlugin extends Plugin
 		// a minimap pin/arrow and a world map marker always point to it.
 		net.runelite.api.coords.WorldPoint goal = ring != null ? ring.getWorldLocation() : stop != null ? stop.getPoint() : null;
 		navOverlay.set(goal);
-		mark(goal, stop == null ? null : ring != null ? "Fairy ring" : stop.getName());
+		// A house ring's place is inside the instance, not on the world map: mark the patch there instead.
+		boolean houseRing = ring != null && view != null && view.isInstance();
+		mark(houseRing ? stop.getPoint() : goal, stop == null ? null : ring != null && !houseRing ? "Fairy ring" : stop.getName());
 		// At the stop, outline the herb patch itself (no hint arrow: that's the game's).
 		// At the stop, outline every patch with something still to do, in whatever order you like.
 		// Over each, the icons of what to use on it next.
@@ -1034,14 +1034,17 @@ public class PotionPrepPlugin extends Plugin
 		List<int[]> tiles = Collections.emptyList();
 		net.runelite.api.Player me = client.getLocalPlayer();
 		net.runelite.api.WorldView wv = client.getTopLevelWorldView();
-		if (stop != null && me != null && wv != null && !wv.isInstance() && stop.getPoint().getPlane() == wv.getPlane())
+		boolean toRing = stop != null && ringFor == stop && ringObject != null;
+		// In an instance (your house) only the ring can be walked to: the patch's coordinates don't apply there.
+		if (stop != null && me != null && wv != null && (toRing ? ringObject.getPlane() == wv.getPlane()
+			: !wv.isInstance() && stop.getPoint().getPlane() == wv.getPlane()))
 		{
 			net.runelite.api.CollisionData[] maps = wv.getCollisionMaps();
 			net.runelite.api.coords.LocalPoint from = me.getLocalLocation();
 			if (from != null && maps != null && maps[wv.getPlane()] != null)
 			{
 				int[][] flags = maps[wv.getPlane()].getFlags();
-				net.runelite.api.GameObject patch = ringFor == stop && ringObject != null ? ringObject
+				net.runelite.api.GameObject patch = toRing ? ringObject
 					: stop.hasHerb() ? herbPatchNear(stop.getPatch(), stop.getPoint()) : nearestToDo(stop, me);
 				net.runelite.api.coords.LocalPoint to = patch == null
 					? net.runelite.api.coords.LocalPoint.fromWorld(wv, stop.getPoint()) : null;
@@ -1075,8 +1078,6 @@ public class PotionPrepPlugin extends Plugin
 		minimapPath.set(tiles);
 	}
 
-	/** Region of the Farming Guild, where the anima patch's varbit is sent. */
-	private static final int FARMING_GUILD_REGION = 4922;
 
 	/** A run left by logging out, and the account it belongs to. */
 	private HerbRun pausedRun;
@@ -2021,11 +2022,10 @@ public class PotionPrepPlugin extends Plugin
 			.bucketUses(Math.max(bucket().getUses(), 0))
 			.bucketType(bucket().getType())
 			.cloakUses(cloakUsesToday())
-			.attas(Boolean.TRUE.equals(configManager.getRSProfileConfiguration(PotionPrepConfig.GROUP, "attas", Boolean.class)))
 			.whistleCharges(savedCharges("whistleCharges"))
 			.xericCharges(savedCharges("xericCharges"))
 			.patchStatus(PatchStatus.read(configManager, java.time.Instant.now().getEpochSecond()))
-			.sidePlots(PatchStatus.readSide(configManager))
+			.sidePlots(PatchStatus.readSide(configManager, java.time.Instant.now().getEpochSecond()))
 			.skipGrowing(config.skipGrowing())
 			.saveRunes(config.saveRunes())
 			.now(java.time.Instant.now().getEpochSecond())
@@ -2516,17 +2516,6 @@ public class PotionPrepPlugin extends Plugin
 	@Subscribe
 	public void onVarbitChanged(VarbitChanged event)
 	{
-		if (event.getVarbitId() == VarbitID.FARMING_TRANSMIT_M)
-		{
-			// The anima patch, only meaningful in the Farming Guild: 8-16 is attas (Time Tracking's ANIMA).
-			net.runelite.api.Player me = client.getLocalPlayer();
-			if (me != null && me.getWorldLocation().getRegionID() == FARMING_GUILD_REGION)
-			{
-				int v = event.getValue();
-				configManager.setRSProfileConfiguration(PotionPrepConfig.GROUP, "attas", v >= 8 && v <= 16);
-				farmDirty = true;
-			}
-		}
 		int varp = event.getVarpId();
 		if (varp == VarPlayerID.POTIONSTORE_BASE_VAR_1 || varp == VarPlayerID.POTIONSTORE_BASE_VAR_2
 			|| varp == VarPlayerID.POTIONSTORE_BASE_VAR_3 || varp == VarPlayerID.POTIONSTORE_BASE_VAR_4
@@ -2861,7 +2850,6 @@ public class PotionPrepPlugin extends Plugin
 		// replanning on every potion made.
 		FarmPlan fp = farm || panelFarmPlan == null ? FarmPlan.compute(fs, counts, wornIds, account()) : panelFarmPlan;
 		panelFarmPlan = fp;
-		String[] harvest = harvestNote(fp, counts, boosted);
 		String[] rows = runRows(notCarried(fp));
 		boolean potionsGear = false;
 		boolean farmGear = savedGear(true) != null;
@@ -2871,126 +2859,10 @@ public class PotionPrepPlugin extends Plugin
 		SwingUtilities.invokeLater(() ->
 		{
 			p.update(plan, status, makeable, xp, lvl, pie, showing, planFor);
-			p.updateFarm(fp, fs, status, showing, farm, harvest, seeds, farming);
+			p.updateFarm(fp, fs, status, showing, farm, seeds, farming);
 			p.setGearSaved(potionsGear, farmGear);
 			p.setRun(rows);
 		});
-	}
-
-	/**
-	 * {headline, detail} for the herb run's expected harvest, or null. The
-	 * detail is what it adds to potions: the selected potion if it uses this
-	 * herb, else the best potion you can make with it.
-	 */
-	private String[] harvestNote(FarmPlan fp, Map<Integer, Integer> counts, int herblore)
-	{
-		int herbs = (int) Math.round(fp.getExpectedHerbs());
-		int snape = (int) Math.round(fp.getExpectedSnape());
-		int roots = (int) Math.round(fp.getExpectedLimpwurt());
-		int snapeNow = (int) Math.round(fp.getPickingSnape());
-		int rootsNow = (int) Math.round(fp.getPickingLimpwurt());
-		if (herbs <= 0 && snape <= 0 && roots <= 0 && fp.getPicking().isEmpty() && snapeNow <= 0 && rootsNow <= 0)
-		{
-			return null;
-		}
-		int grimy = fp.getHerb().getGrimyId();
-		List<String> parts = new ArrayList<>();
-		if (herbs > 0)
-		{
-			parts.add(herbs + " grimy " + Catalog.lower(fp.getHerb().getName()));
-		}
-		if (snape > 0)
-		{
-			parts.add(snape + " snape grass");
-		}
-		if (roots > 0)
-		{
-			parts.add(roots + " limpwurt roots");
-		}
-		String head = "About " + String.join(", ", parts);
-
-		Map<Integer, Integer> after = new HashMap<>(counts);
-		Set<Integer> grown = new HashSet<>();
-		// Herbs ready in the patches now come first: they're what this run brings back.
-		String next = null;
-		Map<Farm.HerbSeed, Double> picking = fp.getPicking();
-		int picked = (int) Math.round(picking.values().stream().mapToDouble(Double::doubleValue).sum());
-		if (picked > 0 || snapeNow > 0 || rootsNow > 0)
-		{
-			List<String> herbsNow = new ArrayList<>();
-			picking.entrySet().stream().sorted((a, b) -> Double.compare(b.getValue(), a.getValue())).forEach(e ->
-			{
-				int n = (int) Math.round(e.getValue());
-				if (n > 0)
-				{
-					herbsNow.add(n + " " + Catalog.lower(e.getKey().getName()));
-					after.merge(e.getKey().getGrimyId(), n, Integer::sum);
-					grown.add(e.getKey().getGrimyId());
-				}
-			});
-			// Snape grass and limpwurt ready in the allotments and flower patches come too.
-			List<String> others = new ArrayList<>();
-			if (snapeNow > 0)
-			{
-				others.add(snapeNow + " snape grass");
-				after.merge(ItemID.SNAPE_GRASS, snapeNow, Integer::sum);
-				grown.add(ItemID.SNAPE_GRASS);
-			}
-			if (rootsNow > 0)
-			{
-				others.add(rootsNow + " limpwurt roots");
-				after.merge(ItemID.LIMPWURT_ROOT, rootsNow, Integer::sum);
-				grown.add(ItemID.LIMPWURT_ROOT);
-			}
-			String herbPart = picked <= 0 ? null : herbsNow.size() == 1 ? picked + " grimy " + herbsNow.get(0).replaceFirst("^\\d+ ", "")
-				: picked + " grimy: " + String.join(", ", herbsNow);
-			List<String> all = new ArrayList<>();
-			if (herbPart != null)
-			{
-				all.add(herbPart);
-			}
-			all.addAll(others);
-			head = "Picking ~" + String.join(herbsNow.size() > 1 ? "; " : ", ", all);
-			next = parts.isEmpty() ? "Nothing planted for next time" : "Next run ~" + String.join(", ", parts);
-		}
-		else
-		{
-			after.merge(grimy, herbs, Integer::sum);
-			after.merge(ItemID.SNAPE_GRASS, snape, Integer::sum);
-			after.merge(ItemID.LIMPWURT_ROOT, roots, Integer::sum);
-			grown.addAll(Arrays.asList(grimy, ItemID.SNAPE_GRASS, ItemID.LIMPWURT_ROOT));
-		}
-		int lvl = herblore > 0 ? herblore : 0;
-
-		// The selected potion if it uses any of it, else the one this run adds the most to.
-		Potion target = null;
-		if (selected != null && !Collections.disjoint(PotionPlan.layoutItems(selected), grown))
-		{
-			target = selected;
-		}
-		else
-		{
-			int bestGain = 0;
-			for (Potion p : Potion.values())
-			{
-				if (Collections.disjoint(PotionPlan.layoutItems(p), grown) || herblore > 0 && p.getLevel() > herblore)
-				{
-					continue;
-				}
-				int gain = p.toPotions(PotionPlan.makeable(p, after, lvl)) - p.toPotions(PotionPlan.makeable(p, counts, lvl));
-				if (gain > bestGain || gain == bestGain && gain > 0 && p.getLevel() > target.getLevel())
-				{
-					bestGain = gain;
-					target = p;
-				}
-			}
-		}
-		if (target == null)
-		{
-			return new String[]{head, null, next};
-		}
-		int more = target.toPotions(PotionPlan.makeable(target, after, lvl)) - target.toPotions(PotionPlan.makeable(target, counts, lvl));
-		return new String[]{head, more > 0 ? "+" + more + " " + target.potionName() + " with what you have" : null, next};
 	}
 
 	private static String ago(long at)

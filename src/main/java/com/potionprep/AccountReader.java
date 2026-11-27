@@ -79,19 +79,13 @@ final class AccountReader
 	{
 		return FarmPlan.Account.builder()
 			.fairyRings(fairyRings)
-			.kandarinDiary(client.getVarbitValue(VarbitID.KANDARIN_DIARY_ELITE_COMPLETE) == 1 ? 3
-				: client.getVarbitValue(VarbitID.KANDARIN_DIARY_HARD_COMPLETE) == 1 ? 2
-				: client.getVarbitValue(VarbitID.KANDARIN_DIARY_MEDIUM_COMPLETE) == 1 ? 1 : 0)
 			// FARMING_BLOCKWEEDS: 0 not bought, 1 off, 2 on.
 			.autoweed(client.getVarbitValue(VarbitID.FARMING_BLOCKWEEDS) == 2)
-			.kourendEasy(client.getVarbitValue(VarbitID.KOUREND_DIARY_EASY_COMPLETE) == 1)
-			.kourendHard(client.getVarbitValue(VarbitID.KOUREND_DIARY_HARD_COMPLETE) == 1)
 			.ringUses(client.getVarbitValue(VarbitID.LUMBRIDGE_CABBAGE_TELEPORT))
 			.legsUses(client.getVarbitValue(VarbitID.MORYTANIA_LEGS_LAST_TELEPORT))
 			.titheUnlocked(client.getVarbitValue(VarbitID.ZEAH_TITHE_MINIGAME_UNLOCKED) == 1)
 			// Varp 888 holds the minute (since 1970) a Grouping teleport was last used; the cooldown is 20 minutes.
 			.groupingReady(java.time.Instant.now().getEpochSecond() / 60 - client.getVarpValue(GROUPING_LAST_USED) > 20)
-			.civitasDiseaseFree(client.getVarpValue(net.runelite.api.gameval.VarPlayerID.COLOSSEUM_GLORY) >= 16000)
 			.lumbridgeElite(client.getVarbitValue(VarbitID.LUMBRIDGE_DIARY_ELITE_COMPLETE) == 1)
 			.houseLocation(client.getVarbitValue(VarbitID.POH_HOUSE_LOCATION))
 			.portals(portals)
