@@ -105,6 +105,8 @@ public final class FarmPlan
 		int xericCharges = -1;
 		/** Tithe Farm's Auto-weed is on: patches never need raking. */
 		boolean autoweed;
+		/** Barbarian Training's farming done: seeds are planted by hand, no seed dibber. */
+		boolean barbarianPlanting;
 		/** Today's uses of the daily-limited farm teleports (cloak from chat, ring and legs from varbits). */
 		int cloakUses;
 		int ringUses;
@@ -398,6 +400,11 @@ public final class FarmPlan
 		for (int tool : Farm.TOOLS)
 		{
 			if (tool == ItemID.RAKE && !weeds)
+			{
+				continue;
+			}
+			// Barbarian Training's farming lets you plant seeds by hand.
+			if (tool == ItemID.DIBBER && acct.isBarbarianPlanting())
 			{
 				continue;
 			}

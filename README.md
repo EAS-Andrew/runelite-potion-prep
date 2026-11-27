@@ -83,7 +83,7 @@ Each patch picks the best teleport you can use: unlimited items first, then hous
 - Short of one compost? The best kind is used first and topped up with the next.
 - A patch Time Tracking saw diseased adds a plant cure.
 - Magic secateurs left at the leprechaun get a reminder, since they only work worn or carried.
-- The bottomless bucket's uses are tracked. The rake only appears if a patch needs raking (never with Tithe Farm's Auto-weed on).
+- The bottomless bucket's uses are tracked. The rake only appears if a patch needs raking (never with Tithe Farm's Auto-weed on). The seed dibber is left out once you've done Barbarian Training's farming.
 
 ### During a run
 

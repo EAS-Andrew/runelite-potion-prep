@@ -654,4 +654,16 @@ public class FarmPlanTest
 		assertEquals("Catherby", Farm.menuOption(Teleport.PORTAL_CATHERBY, Patch.CATHERBY));
 		assertEquals("Xeric's Glade", Farm.menuOption(Teleport.PORTAL_XERIC, Patch.HOSIDIUS));
 	}
+
+	@Test
+	public void barbarianPlantingNeedsNoDibber()
+	{
+		FarmPlan.Settings s = settings(EnumSet.of(Patch.FALADOR), FlowerSeed.NONE, AllotmentSeed.NONE, Collections.emptyMap());
+		Map<Integer, Integer> bank = new HashMap<>();
+		bank.put(ItemID.RANARR_SEED, 5);
+		FarmPlan usual = FarmPlan.compute(s, bank, new HashSet<>(), FarmPlan.Account.builder().farming(99).build());
+		assertTrue(usual.getSupplies().stream().anyMatch(x -> x.getItemId() == ItemID.DIBBER));
+		FarmPlan barb = FarmPlan.compute(s, bank, new HashSet<>(), FarmPlan.Account.builder().farming(99).barbarianPlanting(true).build());
+		assertFalse(barb.getSupplies().stream().anyMatch(x -> x.getItemId() == ItemID.DIBBER));
+	}
 }

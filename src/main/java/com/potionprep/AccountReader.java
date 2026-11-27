@@ -81,6 +81,8 @@ final class AccountReader
 			.fairyRings(fairyRings)
 			// FARMING_BLOCKWEEDS: 0 not bought, 1 off, 2 on.
 			.autoweed(client.getVarbitValue(VarbitID.FARMING_BLOCKWEEDS) == 2)
+			// A single bit, set once Otto's farming lesson (planting barehanded) is done.
+			.barbarianPlanting(client.getVarbitValue(VarbitID.BRUT_FARMING_PLANTING) == 1)
 			.ringUses(client.getVarbitValue(VarbitID.LUMBRIDGE_CABBAGE_TELEPORT))
 			.legsUses(client.getVarbitValue(VarbitID.MORYTANIA_LEGS_LAST_TELEPORT))
 			.titheUnlocked(client.getVarbitValue(VarbitID.ZEAH_TITHE_MINIGAME_UNLOCKED) == 1)
